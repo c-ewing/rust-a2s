@@ -1,50 +1,77 @@
-use super::*;
+use nom::{
+    combinator::{all_consuming, rest},
+    error::Error,
+    multi::many_m_n,
+    number::complete::le_i16,
+    Finish, IResult,
+};
 
-use nom::{combinator::rest, number::complete::le_i16};
-use nom::{multi::many_m_n, IResult};
+use crate::parser_util::c_string;
 
 // # Structs
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Contains the data specified in an [`A2S_RULES response`](https://developer.valvesoftware.com/wiki/Server_queries#Response_Format_3)  
+/// Older games / engines may respond with a single packet response that truncates the rules somewhere in a rule : value pair.
+/// This truncated data is retained withing the remaining data field.
 pub struct ResponseRule {
+    /// Maximum number of rules contained within the response payload.
     pub rules: i16,
+    /// Vec containing all the parsed rules : values pairs
     pub rule_data: Vec<RuleData>,
+    /// Any data left over after attempting to parse the rules. This is not a hard error
+    /// as some engine versions truncated rule data do a single packet instead of sending multiple packets
     pub remaining_data: String,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Pairs of rules : values
 pub struct RuleData {
+    /// Rule name
     pub name: String,
+    /// Value
     pub value: String,
 }
 
 // # Exposed final parser
-// Makes sure that all of the input data was consumed, if not to much data was fed or something
-// TODO: comment better
-pub fn p_rule(input: &[u8]) -> IResult<&[u8], ResponseRule> {
-    all_consuming(rule)(input)
+/// Parse the data specified in an [`A2S_RULES response`](https://developer.valvesoftware.com/wiki/Server_queries#Response_Format_3)  
+/// Older games / engines may respond with a single packet response that truncates the rules somewhere in a rule : value pair.
+/// This truncated data is retained withing the remaining data field.
+/// TODO: If there is remaining data after parsing the correct number of rules then raise an error
+pub fn parse_rule(input: &[u8]) -> Result<ResponseRule, Error<&[u8]>> {
+    match p_rules(input).finish() {
+        Ok(v) => Ok(v.1),
+        Err(e) => Err(e),
+    }
 }
 
 // # Private parsing helper functions
-// Does the bulk of the parsing
-fn rule(input: &[u8]) -> IResult<&[u8], ResponseRule> {
-    let (input, rules) = le_i16(input)?;
-    let (input, rule_data) = many_rule_data(input, rules)?;
+/// Make sure all data consumed (Which it really should be because of using rest() in the rule parser)
+fn p_rules(input: &[u8]) -> IResult<&[u8], ResponseRule> {
+    all_consuming(rules)(input)
+}
+
+/// Does the parsing
+fn rules(input: &[u8]) -> IResult<&[u8], ResponseRule> {
+    let (input, num_rules) = le_i16(input)?;
+    // Parse a maximum of num_rules, rules from the payload
+    let (input, rule_data) = many_rule_data(input, num_rules)?;
     // Grab the rest of the input, this clears input for us so we don't have to after the match
     // This is done to satisfy the all_consuming
     let (input, remaining_data) = rest(input)?;
 
-    // Try to parse the remaining data to a string as it *should* be utf-8, if there is no data,
-    // return None
-    // let remaining_data = match remaining_data.len() {
-    //     0 => None,
-    //     _ => Some(String::from_utf8_lossy(remaining_data).into_owned()),
-    // };
-
     let remaining_data = String::from_utf8_lossy(remaining_data).into_owned();
+
+    // TODO: If there is remaining data after the number of rules was successfully parsed then something went wrong!
+    if rule_data.len() as i16 == num_rules && !remaining_data.is_empty() {
+        return Err(nom::Err::Error(Error::new(
+            input,
+            nom::error::ErrorKind::NonEmpty,
+        )));
+    }
 
     Ok((
         input,
         ResponseRule {
-            rules,
+            rules: num_rules,
             rule_data,
             remaining_data,
         },
@@ -53,10 +80,10 @@ fn rule(input: &[u8]) -> IResult<&[u8], ResponseRule> {
 
 // Uses many_m_n over count as connecting players are included in the players count but no data is stored.
 fn many_rule_data(input: &[u8], rules: i16) -> IResult<&[u8], Vec<RuleData>> {
-    many_m_n(0, rules as usize, player_data)(input)
+    many_m_n(0, rules as usize, rule_data)(input)
 }
 
-fn player_data(input: &[u8]) -> IResult<&[u8], RuleData> {
+fn rule_data(input: &[u8]) -> IResult<&[u8], RuleData> {
     let (input, name) = c_string(input)?;
     let (input, value) = c_string(input)?;
 
@@ -67,6 +94,7 @@ fn player_data(input: &[u8]) -> IResult<&[u8], RuleData> {
 #[test]
 fn long_truncated_rules() {
     // Packet from souce wiki
+    // TODO: Put in include_bytes!() file
     // Omitts first 5 bytes as parse_player assumes the packet data has been combined and the message type determined
     let long_rules: [u8; 1386] = [
         0x5D, 0x00, 0x5F, 0x74, 0x75, 0x74, 0x6F, 0x72, 0x5F, 0x62, 0x6F, 0x6D, 0x62, 0x5F, 0x76,
@@ -166,6 +194,7 @@ fn long_truncated_rules() {
 
     let response = parse_rule(&long_rules).unwrap();
 
+    // Just checks that there is remaining data
     assert_eq!(93, response.rules);
     assert_eq!("sv_conta".to_string(), response.remaining_data);
 }
@@ -173,6 +202,7 @@ fn long_truncated_rules() {
 #[test]
 fn short_rules() {
     // Packet from souce wiki
+    // TODO: Put in include_bytes!() file
     // Omitts first 5 bytes as parse_player assumes the packet data has been combined and the message type determined
     let long_rules: [u8; 272] = [
         0x11, 0x00, 0x73, 0x76, 0x5F, 0x66, 0x72, 0x69, 0x63, 0x74, 0x69, 0x6F, 0x6E, 0x00, 0x34,
@@ -272,4 +302,38 @@ fn short_rules() {
     assert_eq!(17, response.rules);
     assert_eq!(expected_rules, response.rule_data);
     assert_eq!("".to_string(), response.remaining_data);
+}
+
+#[test]
+/// Tests that a payload with data after the full list of rules is parsed is rejected
+fn payload_after_rules() {
+    // Packet from souce wiki
+    // TODO: Put in include_bytes!() file
+    // Omitts first 5 bytes as parse_player assumes the packet data has been combined and the message type determined
+    let payload: [u8; 273] = [
+        0x11, 0x00, 0x73, 0x76, 0x5F, 0x66, 0x72, 0x69, 0x63, 0x74, 0x69, 0x6F, 0x6E, 0x00, 0x34,
+        0x00, 0x73, 0x76, 0x5F, 0x67, 0x72, 0x61, 0x76, 0x69, 0x74, 0x79, 0x00, 0x37, 0x35, 0x30,
+        0x00, 0x73, 0x76, 0x5F, 0x6C, 0x6F, 0x67, 0x62, 0x6C, 0x6F, 0x63, 0x6B, 0x73, 0x00, 0x30,
+        0x00, 0x73, 0x76, 0x5F, 0x6D, 0x61, 0x78, 0x72, 0x61, 0x74, 0x65, 0x00, 0x32, 0x35, 0x30,
+        0x30, 0x30, 0x00, 0x73, 0x76, 0x5F, 0x6D, 0x61, 0x78, 0x73, 0x70, 0x65, 0x65, 0x64, 0x00,
+        0x33, 0x32, 0x30, 0x00, 0x73, 0x76, 0x5F, 0x6D, 0x69, 0x6E, 0x72, 0x61, 0x74, 0x65, 0x00,
+        0x31, 0x35, 0x30, 0x30, 0x30, 0x00, 0x73, 0x76, 0x5F, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6F,
+        0x72, 0x64, 0x00, 0x30, 0x00, 0x73, 0x76, 0x5F, 0x70, 0x72, 0x6F, 0x78, 0x69, 0x65, 0x73,
+        0x00, 0x32, 0x00, 0x73, 0x76, 0x5F, 0x72, 0x65, 0x67, 0x69, 0x6F, 0x6E, 0x00, 0x33, 0x00,
+        0x73, 0x76, 0x5F, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x00, 0x30, 0x00, 0x73, 0x76,
+        0x5F, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x72, 0x6F, 0x75, 0x6E, 0x64, 0x00, 0x30,
+        0x00, 0x73, 0x76, 0x5F, 0x73, 0x74, 0x65, 0x70, 0x73, 0x69, 0x7A, 0x65, 0x00, 0x31, 0x38,
+        0x00, 0x73, 0x76, 0x5F, 0x73, 0x74, 0x6F, 0x70, 0x73, 0x70, 0x65, 0x65, 0x64, 0x00, 0x37,
+        0x35, 0x00, 0x73, 0x76, 0x5F, 0x75, 0x70, 0x6C, 0x6F, 0x61, 0x64, 0x6D, 0x61, 0x78, 0x00,
+        0x30, 0x2E, 0x35, 0x00, 0x73, 0x76, 0x5F, 0x76, 0x6F, 0x69, 0x63, 0x65, 0x65, 0x6E, 0x61,
+        0x62, 0x6C, 0x65, 0x00, 0x31, 0x00, 0x73, 0x76, 0x5F, 0x77, 0x61, 0x74, 0x65, 0x72, 0x61,
+        0x63, 0x63, 0x65, 0x6C, 0x65, 0x72, 0x61, 0x74, 0x65, 0x00, 0x31, 0x30, 0x00, 0x73, 0x76,
+        0x5F, 0x77, 0x61, 0x74, 0x65, 0x72, 0x66, 0x72, 0x69, 0x63, 0x74, 0x69, 0x6F, 0x6E, 0x00,
+        0x31, 0x00, 0xFF,
+    ];
+    let response = parse_rule(&payload).unwrap_err();
+    // []..0] is an empty slice
+    let error = nom::error::Error::new(&payload[..0], nom::error::ErrorKind::NonEmpty);
+
+    assert_eq!(error, response)
 }

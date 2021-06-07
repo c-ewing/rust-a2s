@@ -1,92 +1,75 @@
-use super::*;
+use nom::{
+    combinator::all_consuming,
+    error::Error,
+    number::complete::{le_i32, le_u8},
+    Finish, IResult,
+};
 
-use nom::number::complete::le_u8;
-use nom::IResult;
+use crate::parser_util::{
+    c_string, environment, parse_bool, parse_null, server_type, Environment, ServerType,
+};
 
 // # Structs
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResponseInfo {
+/// Data contained within an [A2S_INFO Response](https://developer.valvesoftware.com/wiki/Server_queries#Obsolete_GoldSource_Response) for Goldsource
+pub struct GoldSourceResponseInfo {
+    /// Server IP address IPV4:PORT
     pub address: String,
+    /// Name of the Server
     pub name: String,
+    /// Map currently loaded
     pub map: String,
+    /// Folder name containing game files
     pub folder: String,
+    /// Name of the game(mode)
     pub game: String,
+    /// Number of currently connected (and connecting) players
     pub players: u8,
+    /// Maximum number of players
     pub max_players: u8,
+    /// Protocol version used by the server
     pub protocol: u8,
+    /// Hosting type of the server
     pub server_type: ServerType,
+    /// Operating system of the server
     pub environment: Environment,
+    /// Is the server private
     pub visibility: bool,
+    /// Is the server a Half Life Mod
     pub mod_half_life: bool,
+    /// If it is a mod, HalfLifeMod contains the mod data
     pub mod_fields: Option<HalfLifeMod>,
+    /// Is the server secured by VAC
     pub vac: bool,
+    /// Number of bots currently connected to the server
     pub bots: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ServerType {
-    Dedicated,
-    NonDedicated,
-    SourceTV,
-    Other(u8),
-}
-
-impl From<u8> for ServerType {
-    fn from(input: u8) -> Self {
-        // Docs say uppercase but the example has lower. Maybe it uses either?
-        match input {
-            // 'd' or 'D'
-            0x44 => ServerType::Dedicated,
-            0x64 => ServerType::Dedicated,
-            // 'l' or 'L'
-            0x4C => ServerType::NonDedicated,
-            0x6C => ServerType::NonDedicated,
-            // 'p' or 'P'
-            0x50 => ServerType::SourceTV,
-            0x70 => ServerType::SourceTV,
-            // Otherwise
-            _ => ServerType::Other(input),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Environment {
-    Linux,
-    Windows,
-    Other(u8),
-}
-
-impl From<u8> for Environment {
-    fn from(input: u8) -> Self {
-        match input {
-            // 'l' or 'L'
-            0x4C => Environment::Linux,
-            0x6C => Environment::Linux,
-            // 'w' or 'W'
-            0x57 => Environment::Windows,
-            0x77 => Environment::Windows,
-            // Otherwise
-            _ => Environment::Other(input),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Contains parsed Half-Life mod data
 pub struct HalfLifeMod {
+    /// Website for the mod
     pub link: String,
+    /// Download link for the mod
     pub download_link: String,
-    // Null Byte
+    /// Mod Version
     pub version: i32,
+    /// Size of the mod in bytes
     pub size: i32,
+    /// Single player and multiplayer mod or multiplayer only mod
     pub mod_type: ModType,
+    /// If the mod uses a custom DLL or the Half-Life DLL
     pub dll: ModDLL,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Parsed Half-Life mod type
 pub enum ModType {
+    /// Single and Multiplayer mod
     SingleAndMultiplayer,
+    /// Multiplayer only mod
     MultiplayerOnly,
+    /// Any other mod type (this should be unused!)
     Other(u8),
 }
 
@@ -101,9 +84,13 @@ impl From<u8> for ModType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Custom or standard Half-Life DLL for the mod
 pub enum ModDLL {
+    /// Mod uses the base Half-Life DLL
     HalfLife,
+    /// MOD uses a custom DLL
     Custom,
+    /// Any other response type (should be unused!)
     Other(u8),
 }
 
@@ -118,15 +105,26 @@ impl From<u8> for ModDLL {
 }
 
 // # Exposed final parser
-// Makes sure that all of the input data was consumed, if not to much data was fed or something
 // TODO: comment better
-pub fn p_goldsource_info(input: &[u8]) -> IResult<&[u8], goldsource_info::ResponseInfo> {
-    all_consuming(goldsource_info)(input)
+// Returns the info or an error if the parsing failed or there was remaining data in the input
+// Remaining data in the input is not considered failure as old servers truncated data to one packet,
+
+pub fn parse_goldsource_info(input: &[u8]) -> Result<GoldSourceResponseInfo, Error<&[u8]>> {
+    match p_goldsource_info(input).finish() {
+        Ok(v) => Ok(v.1),
+        Err(e) => Err(e),
+    }
 }
 
 // # Private parsing helper functions
+// Make sure the parser ate all the data
+// TODO: move into main parsing function
+fn p_goldsource_info(input: &[u8]) -> IResult<&[u8], GoldSourceResponseInfo> {
+    all_consuming(goldsource_info)(input)
+}
+
 // Does the bulk of the parsing
-fn goldsource_info(input: &[u8]) -> IResult<&[u8], goldsource_info::ResponseInfo> {
+fn goldsource_info(input: &[u8]) -> IResult<&[u8], GoldSourceResponseInfo> {
     let (input, address) = c_string(input)?;
     let (input, name) = c_string(input)?;
     let (input, map) = c_string(input)?;
@@ -137,15 +135,15 @@ fn goldsource_info(input: &[u8]) -> IResult<&[u8], goldsource_info::ResponseInfo
     let (input, protocol) = le_u8(input)?;
     let (input, server_type) = server_type(input)?;
     let (input, environment) = environment(input)?;
-    let (input, visibility) = bool(input)?;
-    let (input, mod_half_life) = bool(input)?;
+    let (input, visibility) = parse_bool(input)?;
+    let (input, mod_half_life) = parse_bool(input)?;
     let (input, mod_fields) = mod_fields(input, mod_half_life)?;
-    let (input, vac) = bool(input)?;
+    let (input, vac) = parse_bool(input)?;
     let (input, bots) = le_u8(input)?;
 
     Ok((
         input,
-        ResponseInfo {
+        GoldSourceResponseInfo {
             address,
             name,
             map,
@@ -165,14 +163,6 @@ fn goldsource_info(input: &[u8]) -> IResult<&[u8], goldsource_info::ResponseInfo
     ))
 }
 
-fn server_type(input: &[u8]) -> IResult<&[u8], ServerType> {
-    le_u8(input).map(|(next, res)| (next, res.into()))
-}
-
-fn environment(input: &[u8]) -> IResult<&[u8], Environment> {
-    le_u8(input).map(|(next, res)| (next, res.into()))
-}
-
 fn mod_type(input: &[u8]) -> IResult<&[u8], ModType> {
     le_u8(input).map(|(next, res)| (next, res.into()))
 }
@@ -185,7 +175,7 @@ fn mod_fields(input: &[u8], is_mod: bool) -> IResult<&[u8], Option<HalfLifeMod>>
     if is_mod {
         let (input, link) = c_string(input)?;
         let (input, download_link) = c_string(input)?;
-        let (input, _) = null(input)?;
+        let (input, _) = parse_null(input)?;
         let (input, version) = le_i32(input)?;
         let (input, size) = le_i32(input)?;
         let (input, mod_type) = mod_type(input)?;
@@ -228,7 +218,7 @@ fn info_cs() {
     let response = parse_goldsource_info(&cs).unwrap();
 
     assert_eq!(
-        goldsource_info::ResponseInfo {
+        GoldSourceResponseInfo {
             address: "77.111.194.110:27015".to_string(),
             name: "FR - VeryGames.net - Deatmatch - only surf_ski - ngR".to_string(),
             map: "surf_ski".to_string(),

@@ -1,7 +1,12 @@
-use super::*;
+use crate::parser_util::c_string;
 
-use nom::number::complete::{le_f32, le_u8};
-use nom::{multi::many_m_n, IResult};
+use nom::{
+    combinator::all_consuming,
+    error::Error,
+    multi::many_m_n,
+    number::complete::{le_f32, le_i32, le_u8},
+    Finish, IResult,
+};
 
 // # Structs
 #[derive(Clone, Debug, PartialEq)]
@@ -25,13 +30,21 @@ pub struct TheShipData {
 }
 
 // # Exposed final parser
-// Makes sure that all of the input data was consumed, if not to much data was fed or something
 // TODO: comment better
+// Returns the player info or an error if the parsing failed or there was remaining data in the input
+pub fn parse_player(input: &[u8]) -> Result<ResponsePlayer, Error<&[u8]>> {
+    match p_player(input).finish() {
+        Ok(v) => Ok(v.1),
+        Err(e) => Err(e),
+    }
+}
+
+// # Private parsing helper functions
+// Makes sure that all of the input data was consumed, if not to much data was fed or something
 pub fn p_player(input: &[u8]) -> IResult<&[u8], ResponsePlayer> {
     all_consuming(player)(input)
 }
 
-// # Private parsing helper functions
 // Does the bulk of the parsing
 fn player(input: &[u8]) -> IResult<&[u8], ResponsePlayer> {
     let (input, players) = le_u8(input)?;
@@ -41,7 +54,7 @@ fn player(input: &[u8]) -> IResult<&[u8], ResponsePlayer> {
     let (input, ship_data) = many_the_ship_data(input, players)?;
 
     // If there is ship data, add it to already collected player data
-    if ship_data.len() > 0 {
+    if !ship_data.is_empty() {
         // Iterate over the mutable player data pair with the associated ship data and replace the default
         // None in the player data with a copy of the ship data
         player_data

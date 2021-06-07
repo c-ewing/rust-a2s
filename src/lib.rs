@@ -1,30 +1,37 @@
 /*!
-This crate provides methods for sending [`A2S`] queries to source servers.
+This crate provides methods for parsing [`Source Engine`] and [`Gold Source`] [`A2S`] packets and payloads.
 
-# Goals:
-- One shot methods get_players(server ip)
-- Repeated access through object creation server.get_players() to avoid repeated socket setup and deconstruction
-- Fully support GoldSource packets
-- Full testing coverage
-- nom for message parsing
+# Overview
+Each [`A2S`] response is found in its respective module. Parsers take a slice and return a struct containing the fields defined on the [`A2S`] wiki page
+All requests are parsed in [`requests`]
 
-```rust
-
-//code block
-let a = 0;
-
-```
-
+[`Source Engine`]: https://developer.valvesoftware.com/wiki/Source
+[`Gold Source`]: https://developer.valvesoftware.com/wiki/Goldsource
 [`A2S`]: https://developer.valvesoftware.com/wiki/Server_queries
-
-End of Doc
-
-# Credits:
-Amos and his wonderful writeups on rust. Specifically: https://fasterthanli.me/articles/rust-modules-vs-files
-LogRocket for their blog post on nom: https://blog.logrocket.com/parsing-in-rust-with-nom/#errorhandlinginnom
-benkay86 for and introduction to nom 5+: https://github.com/benkay86/nom-tutorial/#chap3
 */
 
-extern crate nom;
+// This is gonna hurt (at first)
+#![deny(missing_docs)]
+// TODO: Add better errors for parsing failures
 
-pub mod parse;
+///Parsing complete responses to [A2S_INFO](https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO) requests for [Gold Source](https://developer.valvesoftware.com/wiki/Goldsource)
+pub mod info_goldsource;
+/// Parsing [A2S Packets](https://developer.valvesoftware.com/wiki/Server_queries#Protocol)
+pub mod packet;
+// TODO: links?
+/// Parsing complete responses to [A2S_INFO](https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO) requests for [Source](https://developer.valvesoftware.com/wiki/Source)
+pub mod info_source;
+/// Enums used across [`info_goldsource`], [`info_source`], and [`packet`]
+pub mod parser_util;
+/// Parsing complete responses to [A2S_PING](https://developer.valvesoftware.com/wiki/Server_queries#A2A_PING) requests for [Gold Source](https://developer.valvesoftware.com/wiki/Goldsource) and [Source](https://developer.valvesoftware.com/wiki/Source)
+pub mod ping;
+/// Parsing complete responses to [A2S_PLAYER](https://developer.valvesoftware.com/wiki/Server_queries#A2A_PLAYER) requests for [Gold Source](https://developer.valvesoftware.com/wiki/Goldsource) and [Source](https://developer.valvesoftware.com/wiki/Source)
+pub mod player;
+/// Parsing all complete [A2S](https://developer.valvesoftware.com/wiki/Server_queries#Requests) requests
+pub mod requests;
+/// Parsing complete responses to [A2S_RULES](https://developer.valvesoftware.com/wiki/Server_queries#A2A_RULES) requests for [Gold Source](https://developer.valvesoftware.com/wiki/Goldsource) and [Source](https://developer.valvesoftware.com/wiki/Source)
+pub mod rules;
+
+// TODO: Parse any slice provided and attempt to make a packet out of it
+// Need to figure out how to return different packet types from one function call and how to determine
+// split gold source from split source

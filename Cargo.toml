@@ -1,8 +1,12 @@
 [package]
-name = "source_server_query"
+name = "a2s-parse"
 version = "0.1.0"
 authors = ["Cameron Ewing <cameronrewing@uvic.ca>"]
 edition = "2018"
+description = "Functions for parsing data sent to and from (Gold)Source Servers"
+license = "MIT OR Apache-2.0"
+repository = "TODO:"
+documentation = "TODO: if its good neough to put on crates.io then put it in"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
