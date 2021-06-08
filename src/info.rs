@@ -1,14 +1,11 @@
 // # Imports
 use nom::{
-    combinator::all_consuming,
     error::Error,
-    number::complete::{le_i32, le_u8, le_i16, le_u64},
+    number::complete::{le_i16, le_i32, le_u64, le_u8},
     Finish, IResult,
 };
 
-use crate::parser_util::{
-    c_string,  parse_bool, parse_null, opt_le_u8
-};
+use crate::parser_util::{c_string, opt_le_u8, parse_bool, parse_null};
 // # Enums
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -17,68 +14,28 @@ use crate::parser_util::{
 pub enum ServerType {
     /// Dedicated (Gold)Source server -> 'd' (0x44) or 'D' (0x64)
     Dedicated,
-    /// Non Dedicated (Gold)Source server -> 'l' (0x4C) or 'L' (0x6C) - TODO: Is this used anywhere?
+    /// Non Dedicated (Gold)Source server -> 'l' (0x4C) or 'L' (0x6C)
     NonDedicated,
     /// SourceTV relay server -> 'p' (0x50) or 'P' (0x70)
     SourceTV,
+    /// Rag Doll Kung Fu always returns 0
+    RagDollKungFu,
     /// Holds the value of any other parsed value. In theory this should be unused, however there may be some odd games
-    Other(u8),
-}
-
-// TODO: Specialize this in the parsing functions as Gold / Source use different vals
-impl From<u8> for ServerType {
-    fn from(input: u8) -> Self {
-        // Docs say uppercase but the example has lower. Maybe it uses either?
-        match input {
-            // 'd' or 'D'
-            0x44 => ServerType::Dedicated,
-            0x64 => ServerType::Dedicated,
-            // 'l' or 'L'
-            0x4C => ServerType::NonDedicated,
-            0x6C => ServerType::NonDedicated,
-            // 'p' or 'P'
-            0x50 => ServerType::SourceTV,
-            0x70 => ServerType::SourceTV,
-            // Otherwise
-            _ => ServerType::Other(input),
-        }
-    }
+    Invalid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 /// Indicates the Operating System the server is running on  
 /// Gold Source uses the capital (uppercase?) version of the characters  
-/// Used in [`info_goldsource`](crate::info_goldsource), [`info_source`](crate::info_source)
 pub enum Environment {
     /// Linux -> 'l' (0x4C) or 'L' (0x6C)
     Linux,
     /// Windows -> 'w' (0x57) or 'W' (0x77)
     Windows,
-    /// MacOS -> 'm' (0x6D) or 'o' (0x6F), uppercase equivalents are included as well TODO: Test if the capital letter varients exist in any source engine game.
+    /// MacOS -> 'm' (0x6D) or 'o' (0x6F), uppercase equivalents are included as well
     MacOS,
     /// Any other operating system value, Should never hit this in theory, however there may be some odd games
-    Other(u8),
-}
-
-// TODO: Specialize for Gold / Source
-impl From<u8> for Environment {
-    fn from(input: u8) -> Self {
-        match input {
-            // 'l' or 'L'
-            0x4C => Environment::Linux,
-            0x6C => Environment::Linux,
-            // 'w' or 'W'
-            0x57 => Environment::Windows,
-            0x77 => Environment::Windows,
-            // 'm' or 'M' or 'o' or 'O'
-            0x4D => Environment::MacOS,
-            0x6D => Environment::MacOS,
-            0x4F => Environment::MacOS,
-            0x6F => Environment::MacOS,
-            // Otherwise
-            _ => Environment::Other(input),
-        }
-    }
+    Other,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,18 +45,8 @@ pub enum ModType {
     SingleAndMultiplayer,
     /// Multiplayer only mod
     MultiplayerOnly,
-    /// Any other mod type (this should be unused!)
-    Other(u8),
-}
-
-impl From<u8> for ModType {
-    fn from(input: u8) -> Self {
-        match input {
-            0 => ModType::SingleAndMultiplayer,
-            1 => ModType::MultiplayerOnly,
-            _ => ModType::Other(input),
-        }
-    }
+    /// Should only be one of the above options
+    Invalid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,18 +56,8 @@ pub enum ModDLL {
     HalfLife,
     /// MOD uses a custom DLL
     Custom,
-    /// Any other response type (should be unused!)
-    Other(u8),
-}
-
-impl From<u8> for ModDLL {
-    fn from(input: u8) -> Self {
-        match input {
-            0 => ModDLL::HalfLife,
-            1 => ModDLL::Custom,
-            _ => ModDLL::Other(input),
-        }
-    }
+    /// Any other response type should be invalid
+    Invalid,
 }
 
 #[allow(non_camel_case_types)]
@@ -139,22 +76,8 @@ pub enum TheShipGameMode {
     VIP_Team,
     /// 5 -> Team Elimination Gamemode
     Team_Elimination,
-    /// Any other game mode (Should not occur)
-    Other(u8),
-}
-
-impl From<u8> for TheShipGameMode {
-    fn from(input: u8) -> Self {
-        match input {
-            0 => TheShipGameMode::Hunt,
-            1 => TheShipGameMode::Elimination,
-            2 => TheShipGameMode::Duel,
-            3 => TheShipGameMode::Deathmatch,
-            4 => TheShipGameMode::VIP_Team,
-            5 => TheShipGameMode::Team_Elimination,
-            _ => TheShipGameMode::Other(input),
-        }
-    }
+    /// Any other game mode should be invalid
+    Invalid,
 }
 
 // # Structs
@@ -185,27 +108,6 @@ pub struct TheShipFields {
     pub witnesses: u8,
     /// Time in seconds before the player is arrested while witnessed
     pub duration: u8,
-}
-#[derive(Clone, Debug, PartialEq, Eq)]
-/// Optional Extra Data Fields
-/// if `EDF & 0x80` then the servers port is also transmitted
-/// if `EDF & 0x10` then servers steam ID is transmitted
-/// if `EDF & 0x40` then the spectator port number and name of the spectator server for SourceTV are contained
-/// if `EDF & 0x20` then tags that describe the game are transmitted
-/// if `EDF & 0x01` then the full game ID and untruncated App ID are contained.  
-pub struct ExtraDataFields {
-    /// Servers port
-    pub port: Option<i16>,
-    /// Server SteamID
-    pub steam_id: Option<u64>,
-    /// Port for Source TV
-    pub source_tv_port: Option<i16>,
-    /// Name of the Spectator server for Source TV
-    pub source_tv_name: Option<String>,
-    /// Tags that describe the game
-    pub keywords: Option<String>,
-    /// 64bit GameID, if present then the lower 24bits are a more accurate AppID as it may have been truncated to fit in 16bits previously
-    pub game_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -279,23 +181,33 @@ pub struct SourceResponseInfo {
     pub version: String,
     /// Extra Data Flag according to the [wiki](https://developer.valvesoftware.com/wiki/Server_queries#Response_Format)
     pub extra_data_flag: u8,
+
     /// Optional Data signalled by the EDF flag
-    /// if `EDF & 0x80` then the servers port is also transmitted
-    /// if `EDF & 0x10` then servers steam ID is transmitted
-    /// if `EDF & 0x40` then the spectator port number and name of the spectator server for SourceTV are contained
-    /// if `EDF & 0x20` then tags that describe the game are transmitted
-    /// if `EDF & 0x01` then the full game ID and untruncated App ID are contained. 
-    pub extra_data_fields: ExtraDataFields,
+    /// Servers port
+    pub port: Option<i16>,
+    /// Server SteamID
+    pub steam_id: Option<u64>,
+    /// Port for Source TV
+    pub source_tv_port: Option<i16>,
+    /// Name of the Spectator server for Source TV
+    pub source_tv_name: Option<String>,
+    /// Tags that describe the game
+    pub keywords: Option<String>,
+    /// 64bit GameID, if present then the lower 24bits are a more accurate AppID as it may have been truncated to fit in 16bits previously
+    pub game_id: Option<u64>,
 }
 
 // # Public Parsers
+/// Takes a slice of bytes and attempts to parse a GoldSource info response out of it
+/// The parsing itself occurs withing p_goldsource_info, this just converts the IResult to a Result
 pub fn parse_goldsource_info(input: &[u8]) -> Result<GoldSourceResponseInfo, Error<&[u8]>> {
     match p_goldsource_info(input).finish() {
         Ok(v) => Ok(v.1),
         Err(e) => Err(e),
     }
 }
-
+/// Takes a slice of bytes and attempts to parse a Source info response out of it
+/// The parsing itself occurs withing p_goldsource_info, this just converts the IResult to a Result
 pub fn parse_source_info(input: &[u8]) -> Result<SourceResponseInfo, Error<&[u8]>> {
     match p_source_info(input).finish() {
         Ok(v) => Ok(v.1),
@@ -304,8 +216,8 @@ pub fn parse_source_info(input: &[u8]) -> Result<SourceResponseInfo, Error<&[u8]
 }
 
 // # Support Parsers
-// Does the bulk of the parsing
-fn goldsource_info(input: &[u8]) -> IResult<&[u8], GoldSourceResponseInfo> {
+// Does the parsing for goldsource info responses
+fn p_goldsource_info(input: &[u8]) -> IResult<&[u8], GoldSourceResponseInfo> {
     let (input, address) = c_string(input)?;
     let (input, name) = c_string(input)?;
     let (input, map) = c_string(input)?;
@@ -318,9 +230,22 @@ fn goldsource_info(input: &[u8]) -> IResult<&[u8], GoldSourceResponseInfo> {
     let (input, environment) = environment(input)?;
     let (input, visibility) = parse_bool(input)?;
     let (input, mod_half_life) = parse_bool(input)?;
-    let (input, mod_fields) = mod_fields(input, mod_half_life)?;
+
+    let (input, mod_fields) = match mod_half_life {
+        true => mod_fields(input)?,
+        false => (input, None),
+    };
+
     let (input, vac) = parse_bool(input)?;
     let (input, bots) = le_u8(input)?;
+
+    // If the input is not empty there is extra data that shouldn't be there, raise a soft error so other parsers can be tried
+    if !input.is_empty() {
+        return Err(nom::Err::Error(nom::error::Error {
+            input,
+            code: nom::error::ErrorKind::TooLarge,
+        }));
+    }
 
     Ok((
         input,
@@ -344,61 +269,50 @@ fn goldsource_info(input: &[u8]) -> IResult<&[u8], GoldSourceResponseInfo> {
     ))
 }
 
-// Make sure the parser ate all the data
-// TODO: move into main parsing function
-fn p_goldsource_info(input: &[u8]) -> IResult<&[u8], GoldSourceResponseInfo> {
-    all_consuming(goldsource_info)(input)
-}
+fn mod_fields(input: &[u8]) -> IResult<&[u8], Option<HalfLifeMod>> {
+    let (input, link) = c_string(input)?;
+    let (input, download_link) = c_string(input)?;
+    let (input, _) = parse_null(input)?;
+    let (input, version) = le_i32(input)?;
+    let (input, size) = le_i32(input)?;
+    let (input, mod_value) = le_u8(input)?;
+    let (input, dll_value) = le_u8(input)?;
 
-fn mod_type(input: &[u8]) -> IResult<&[u8], ModType> {
-    le_u8(input).map(|(next, res)| (next, res.into()))
-}
+    let mod_type = match mod_value {
+        0 => ModType::SingleAndMultiplayer,
+        1 => ModType::MultiplayerOnly,
+        _ => ModType::Invalid,
+    };
 
-fn dll(input: &[u8]) -> IResult<&[u8], ModDLL> {
-    le_u8(input).map(|(next, res)| (next, res.into()))
-}
+    let dll = match dll_value {
+        0 => ModDLL::HalfLife,
+        1 => ModDLL::Custom,
+        _ => ModDLL::Invalid,
+    };
 
-fn mod_fields(input: &[u8], is_mod: bool) -> IResult<&[u8], Option<HalfLifeMod>> {
-    if is_mod {
-        let (input, link) = c_string(input)?;
-        let (input, download_link) = c_string(input)?;
-        let (input, _) = parse_null(input)?;
-        let (input, version) = le_i32(input)?;
-        let (input, size) = le_i32(input)?;
-        let (input, mod_type) = mod_type(input)?;
-        let (input, dll) = dll(input)?;
-
-        Ok((
+    // Make sure the type is not invalid and the dll is not invalid
+    if mod_type == ModType::Invalid || dll == ModDLL::Invalid {
+        return Err(nom::Err::Error(nom::error::Error {
             input,
-            Some(HalfLifeMod {
-                link,
-                download_link,
-                version,
-                size,
-                mod_type,
-                dll,
-            }),
-        ))
-    } else {
-        Ok((input, None))
+            code: nom::error::ErrorKind::IsNot,
+        }));
     }
+
+    Ok((
+        input,
+        Some(HalfLifeMod {
+            link,
+            download_link,
+            version,
+            size,
+            mod_type,
+            dll,
+        }),
+    ))
 }
 
-/// Reads one byte from the input slice and returns the ServerType
-fn server_type(input: &[u8]) -> IResult<&[u8], ServerType> {
-    le_u8(input).map(|(next, res)| (next, res.into()))
-}
-
-/// Reads one byte from the input slice and returns the Environment
-fn environment(input: &[u8]) -> IResult<&[u8], Environment> {
-    le_u8(input).map(|(next, res)| (next, res.into()))
-}
-
+/// Does the parsing for source info responses
 fn p_source_info(input: &[u8]) -> IResult<&[u8], SourceResponseInfo> {
-    all_consuming(source_info)(input)
-}
-// Does the bulk of the parsing
-fn source_info(input: &[u8]) -> IResult<&[u8], SourceResponseInfo> {
     let (input, protocol) = le_u8(input)?;
     let (input, name) = c_string(input)?;
     let (input, map) = c_string(input)?;
@@ -412,18 +326,67 @@ fn source_info(input: &[u8]) -> IResult<&[u8], SourceResponseInfo> {
     let (input, environment) = environment(input)?;
     let (input, visibility) = parse_bool(input)?;
     let (input, vac) = parse_bool(input)?;
-    let (input, the_ship) = the_ship(input, app_id == 2400)?;
 
-    // The version is either the last data in the input, or there is the extra data flag
+    // Only if the app_id matches on of The Ships ids should we try and parse ship data
+    let (input, the_ship) = match app_id {
+        // The Ship AppIds
+        2400 | 2401 | 2402 | 2412 => the_ship(input)?,
+        // The Ship Tutorial AppIds
+        2430 | 2405 | 2406 => the_ship(input)?,
+        // All other AppIds shouldn't have The Ship data
+        _ => (input, None),
+    };
+
     let (input, version) = c_string(input)?;
 
-    // Doesn't always exist, need to make optional
+    // Optional, only is present when there is more data provided
     let (input, extra_data_flag) = opt_le_u8(input)?;
     // Unwrap, 0 means no data flags
     let extra_data_flag: u8 = extra_data_flag.unwrap_or(0);
 
-    // TODO: This is not optimal, should skip trying to parse all of the values if the flag is 0
-    let (input, extra_data_fields) = extra_data_fields(input, extra_data_flag)?;
+    // Parse the extra data fields if the flag is not 0
+    // if `EDF & 0x80` then the servers port is also transmitted
+    let (input, port) = match extra_data_flag {
+        0x80 => le_i16(input).map(|(next, val)| (next, Some(val)))?,
+        _ => (input, None),
+    };
+
+    // if `EDF & 0x10` then servers steam ID is transmitted
+    let (input, steam_id) = match extra_data_flag {
+        0x10 => le_u64(input).map(|(next, val)| (next, Some(val)))?,
+        _ => (input, None),
+    };
+
+    // if `EDF & 0x40` then the spectator port number and name of the spectator server for SourceTV are contained
+    let (input, source_tv_port) = match extra_data_flag {
+        0x40 => le_i16(input).map(|(next, val)| (next, Some(val)))?,
+        _ => (input, None),
+    };
+
+    let (input, source_tv_name) = match extra_data_flag {
+        0x40 => c_string(input).map(|(next, val)| (next, Some(val)))?,
+        _ => (input, None),
+    };
+
+    // if `EDF & 0x20` then tags that describe the game are transmitted
+    let (input, keywords) = match extra_data_flag {
+        0x20 => c_string(input).map(|(next, val)| (next, Some(val)))?,
+        _ => (input, None),
+    };
+
+    // if `EDF & 0x01` then the full game ID and untruncated App ID are contained.
+    let (input, game_id) = match extra_data_flag {
+        0x01 => le_u64(input).map(|(next, val)| (next, Some(val)))?,
+        _ => (input, None),
+    };
+
+    // If the input is not empty there is extra data that shouldn't be there, raise a soft error so other parsers can be tried
+    if !input.is_empty() {
+        return Err(nom::Err::Error(nom::error::Error {
+            input,
+            code: nom::error::ErrorKind::TooLarge,
+        }));
+    }
 
     Ok((
         input,
@@ -444,41 +407,6 @@ fn source_info(input: &[u8]) -> IResult<&[u8], SourceResponseInfo> {
             the_ship,
             version,
             extra_data_flag,
-            extra_data_fields,
-        },
-    ))
-}
-
-fn the_ship(input: &[u8], is_ship: bool) -> IResult<&[u8], Option<TheShipFields>> {
-    if is_ship {
-        let (input, mode) = le_u8(input).map(|(next, res)| (next, res.into()))?;
-        let (input, witnesses) = le_u8(input)?;
-        let (input, duration) = le_u8(input)?;
-
-        Ok((
-            input,
-            Some(TheShipFields {
-                mode,
-                witnesses,
-                duration,
-            }),
-        ))
-    } else {
-        Ok((input, None))
-    }
-}
-
-fn extra_data_fields(input: &[u8], extra_data_flag: u8) -> IResult<&[u8], ExtraDataFields> {
-    let (input, port) = port(input, extra_data_flag)?;
-    let (input, steam_id) = steam_id(input, extra_data_flag)?;
-    let (input, source_tv_port) = source_tv_port(input, extra_data_flag)?;
-    let (input, source_tv_name) = source_tv_name(input, extra_data_flag)?;
-    let (input, keywords) = keywords(input, extra_data_flag)?;
-    let (input, game_id) = game_id(input, extra_data_flag)?;
-
-    Ok((
-        input,
-        ExtraDataFields {
             port,
             steam_id,
             source_tv_port,
@@ -489,64 +417,99 @@ fn extra_data_fields(input: &[u8], extra_data_flag: u8) -> IResult<&[u8], ExtraD
     ))
 }
 
-fn port(input: &[u8], flag: u8) -> IResult<&[u8], Option<i16>> {
-    if flag & 0x80 != 0 {
-        let (input, port) = le_i16(input)?;
+fn the_ship(input: &[u8]) -> IResult<&[u8], Option<TheShipFields>> {
+    let (input, mode_value) = le_u8(input)?;
 
-        Ok((input, Some(port)))
-    } else {
-        Ok((input, None))
+    let mode = match mode_value {
+        0 => TheShipGameMode::Hunt,
+        1 => TheShipGameMode::Elimination,
+        2 => TheShipGameMode::Duel,
+        3 => TheShipGameMode::Deathmatch,
+        4 => TheShipGameMode::VIP_Team,
+        5 => TheShipGameMode::Team_Elimination,
+        _ => TheShipGameMode::Invalid,
+    };
+
+    // Make sure the gamemode is not invalid
+    if mode == TheShipGameMode::Invalid {
+        return Err(nom::Err::Error(nom::error::Error {
+            input,
+            code: nom::error::ErrorKind::IsNot,
+        }));
     }
+
+    let (input, witnesses) = le_u8(input)?;
+    let (input, duration) = le_u8(input)?;
+
+    Ok((
+        input,
+        Some(TheShipFields {
+            mode,
+            witnesses,
+            duration,
+        }),
+    ))
 }
 
-fn steam_id(input: &[u8], flag: u8) -> IResult<&[u8], Option<u64>> {
-    if flag & 0x10 != 0 {
-        let (input, steam_id) = le_u64(input)?;
+/// Reads one byte from the input slice and returns the ServerType for goldsource
+fn server_type(input: &[u8]) -> IResult<&[u8], ServerType> {
+    let (input, value) = le_u8(input)?;
 
-        Ok((input, Some(steam_id)))
-    } else {
-        Ok((input, None))
+    let server_type = match value {
+        // 'D' or 'd'
+        0x44 => ServerType::Dedicated,
+        0x64 => ServerType::Dedicated,
+        // 'L' or 'l'
+        0x4C => ServerType::NonDedicated,
+        0x6C => ServerType::NonDedicated,
+        // 'P' or 'p'
+        0x50 => ServerType::SourceTV,
+        0x70 => ServerType::SourceTV,
+        // 0
+        0x00 => ServerType::RagDollKungFu,
+        // Any other value is invalid
+        _ => ServerType::Invalid,
+    };
+
+    // recoverable error so that we can try alternative parsers if we desire later
+    if server_type == ServerType::Invalid {
+        return Err(nom::Err::Error(nom::error::Error {
+            input,
+            code: nom::error::ErrorKind::IsNot,
+        }));
     }
+
+    Ok((input, server_type))
 }
 
-fn source_tv_port(input: &[u8], flag: u8) -> IResult<&[u8], Option<i16>> {
-    if flag & 0x40 != 0 {
-        let (input, port) = le_i16(input)?;
+/// Reads one byte from the input slice and returns the Environment
+fn environment(input: &[u8]) -> IResult<&[u8], Environment> {
+    let (input, value) = le_u8(input)?;
 
-        Ok((input, Some(port)))
-    } else {
-        Ok((input, None))
+    let server_env = match value {
+        // 'l' or 'L'
+        0x4C => Environment::Linux,
+        0x6C => Environment::Linux,
+        // 'w' or 'W'
+        0x57 => Environment::Windows,
+        0x77 => Environment::Windows,
+        // 'm' or 'M' or 'o' or 'O'
+        0x4D => Environment::MacOS,
+        0x6D => Environment::MacOS,
+        0x4F => Environment::MacOS,
+        0x6F => Environment::MacOS,
+        // Otherwise
+        _ => Environment::Other,
+    };
+
+    if server_env == Environment::Other {
+        return Err(nom::Err::Error(nom::error::Error {
+            input,
+            code: nom::error::ErrorKind::IsNot,
+        }));
     }
-}
 
-fn source_tv_name(input: &[u8], flag: u8) -> IResult<&[u8], Option<String>> {
-    if flag & 0x40 != 0 {
-        let (input, name) = c_string(input)?;
-
-        Ok((input, Some(name)))
-    } else {
-        Ok((input, None))
-    }
-}
-
-fn keywords(input: &[u8], flag: u8) -> IResult<&[u8], Option<String>> {
-    if flag & 0x20 != 0 {
-        let (input, keywords) = c_string(input)?;
-
-        Ok((input, Some(keywords)))
-    } else {
-        Ok((input, None))
-    }
-}
-
-fn game_id(input: &[u8], flag: u8) -> IResult<&[u8], Option<u64>> {
-    if flag & 0x20 != 0 {
-        let (input, game_id) = le_u64(input)?;
-
-        Ok((input, Some(game_id)))
-    } else {
-        Ok((input, None))
-    }
+    Ok((input, server_env))
 }
 
 // # Tests
@@ -632,14 +595,13 @@ fn info_css() {
             the_ship: None,
             version: "1.0.0.22".to_string(),
             extra_data_flag: 0,
-            extra_data_fields: ExtraDataFields {
-                port: None,
-                steam_id: None,
-                source_tv_port: None,
-                source_tv_name: None,
-                keywords: None,
-                game_id: None
-            },
+
+            port: None,
+            steam_id: None,
+            source_tv_port: None,
+            source_tv_name: None,
+            keywords: None,
+            game_id: None
         },
         response
     );
@@ -679,16 +641,14 @@ fn info_the_ship() {
             }),
             version: "1.0.0.4".to_string(),
             extra_data_flag: 0,
-            extra_data_fields: ExtraDataFields {
-                port: None,
-                steam_id: None,
-                source_tv_port: None,
-                source_tv_name: None,
-                keywords: None,
-                game_id: None
-            },
+
+            port: None,
+            steam_id: None,
+            source_tv_port: None,
+            source_tv_name: None,
+            keywords: None,
+            game_id: None
         },
         response
     );
 }
-
