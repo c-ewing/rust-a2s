@@ -48,7 +48,7 @@ fn p_ping(input: &[u8]) -> IResult<&[u8], String> {
 // # Test
 #[test]
 fn goldsource_response() {
-    // Omitts first 5 bytes as parse_player assumes the packet data has been combined and the message type determined
+    // Omitts first 5 bytes as parse_ping assumes the packet data has been combined and the message type determined
     let payload: [u8; 1] = [0x00];
 
     let response = parse_ping(&payload).unwrap();
@@ -61,7 +61,7 @@ fn source_response() {}
 
 #[test]
 fn no_payload() {
-    // Omitts first 5 bytes as parse_player assumes the packet data has been combined and the message type determined
+    // Omitts first 5 bytes as parse_ping assumes the packet data has been combined and the message type determined
     let payload: [u8; 0] = [];
 
     // using [..] transforms it into a slice

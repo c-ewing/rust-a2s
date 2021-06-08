@@ -36,7 +36,7 @@ pub struct RuleData {
 /// Older games / engines may respond with a single packet response that truncates the rules somewhere in a rule : value pair.
 /// This truncated data is retained withing the remaining data field.
 /// TODO: If there is remaining data after parsing the correct number of rules then raise an error
-pub fn parse_rule(input: &[u8]) -> Result<ResponseRule, Error<&[u8]>> {
+pub fn parse_rules(input: &[u8]) -> Result<ResponseRule, Error<&[u8]>> {
     match p_rules(input).finish() {
         Ok(v) => Ok(v.1),
         Err(e) => Err(e),
@@ -192,7 +192,7 @@ fn long_truncated_rules() {
         0x5F, 0x63, 0x6F, 0x6E, 0x74, 0x61,
     ];
 
-    let response = parse_rule(&long_rules).unwrap();
+    let response = parse_rules(&long_rules).unwrap();
 
     // Just checks that there is remaining data
     assert_eq!(93, response.rules);
@@ -226,7 +226,7 @@ fn short_rules() {
         0x31, 0x00,
     ];
 
-    let response = parse_rule(&long_rules).unwrap();
+    let response = parse_rules(&long_rules).unwrap();
 
     let expected_rules = vec![
         RuleData {
@@ -331,7 +331,7 @@ fn payload_after_rules() {
         0x5F, 0x77, 0x61, 0x74, 0x65, 0x72, 0x66, 0x72, 0x69, 0x63, 0x74, 0x69, 0x6F, 0x6E, 0x00,
         0x31, 0x00, 0xFF,
     ];
-    let response = parse_rule(&payload).unwrap_err();
+    let response = parse_rules(&payload).unwrap_err();
     // []..0] is an empty slice
     let error = nom::error::Error::new(&payload[..0], nom::error::ErrorKind::NonEmpty);
 
