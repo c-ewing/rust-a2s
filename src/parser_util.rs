@@ -2,7 +2,6 @@ use nom::{
     bytes::complete::take_till, character::complete::char, combinator::opt,
     number::complete::le_u8, sequence::terminated, IResult,
 };
-// TODO: Tests
 
 /// Parses a C style String
 /// Reads all bytes until a null terminator is reached.
