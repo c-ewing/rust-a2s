@@ -381,12 +381,12 @@ fn p_source_info(input: &[u8]) -> IResult<&[u8], SourceResponseInfo> {
     };
 
     // If the input is not empty there is extra data that shouldn't be there, raise a soft error so other parsers can be tried
-    if !input.is_empty() {
-        return Err(nom::Err::Error(nom::error::Error {
-            input,
-            code: nom::error::ErrorKind::TooLarge,
-        }));
-    }
+    // if !input.is_empty() {
+    //     return Err(nom::Err::Error(nom::error::Error {
+    //         input,
+    //         code: nom::error::ErrorKind::TooLarge,
+    //     }));
+    // }
 
     Ok((
         input,
@@ -513,6 +513,16 @@ fn environment(input: &[u8]) -> IResult<&[u8], Environment> {
 }
 
 // # Tests
+
+#[test]
+fn info_garrysmod() {
+    let info_bytes = include_bytes!("../test_bytes/chaoticTTT.info");
+
+    let response = parse_source_info(info_bytes);
+
+    println!("{:X?}", response);
+}
+
 #[test]
 fn info_cs() {
     // Packet from souce wiki
