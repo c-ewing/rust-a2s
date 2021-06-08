@@ -1,10 +1,6 @@
 use nom::{
-    bytes::complete::take_till,
-    character::complete::char,
-    combinator::opt,
-    number::complete::le_u8,
-    sequence::terminated,
-    IResult,
+    bytes::complete::take_till, character::complete::char, combinator::opt,
+    number::complete::le_u8, sequence::terminated, IResult,
 };
 // TODO: Tests
 
@@ -21,7 +17,7 @@ pub(crate) fn opt_le_u8(input: &[u8]) -> IResult<&[u8], Option<u8>> {
     opt(le_u8)(input)
 }
 
-/// Reads one null byte (0x00) from input. If the next byte is not null an Error is returned.
+/// Reads one null byte (0x00) from input. If the byte is not null an Error is returned.
 pub(crate) fn parse_null(input: &[u8]) -> IResult<&[u8], char> {
     char(0x00 as char)(input)
 }
