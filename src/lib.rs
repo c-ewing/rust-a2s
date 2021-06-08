@@ -11,17 +11,14 @@ All requests are parsed in [`requests`]
 */
 
 // This is gonna hurt (at first)
-#![deny(missing_docs)]
+//#![deny(missing_docs)]
 // TODO: Add better errors for parsing failures
 
-///Parsing complete responses to [A2S_INFO](https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO) requests for [Gold Source](https://developer.valvesoftware.com/wiki/Goldsource)
-pub mod info_goldsource;
+///Parsing complete responses to [A2S_INFO](https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO) requests
+pub mod info;
 /// Parsing [A2S Packets](https://developer.valvesoftware.com/wiki/Server_queries#Protocol)
 pub mod packet;
-// TODO: links?
-/// Parsing complete responses to [A2S_INFO](https://developer.valvesoftware.com/wiki/Server_queries#A2S_INFO) requests for [Source](https://developer.valvesoftware.com/wiki/Source)
-pub mod info_source;
-/// Enums used across [`info_goldsource`], [`info_source`], and [`packet`]
+// TODO: Doc
 pub mod parser_util;
 /// Parsing complete responses to [A2S_PING](https://developer.valvesoftware.com/wiki/Server_queries#A2A_PING) requests for [Gold Source](https://developer.valvesoftware.com/wiki/Goldsource) and [Source](https://developer.valvesoftware.com/wiki/Source)
 pub mod ping;

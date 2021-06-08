@@ -5,7 +5,7 @@ authors = ["Cameron Ewing <cameronrewing@uvic.ca>"]
 edition = "2018"
 description = "Functions for parsing data sent to and from (Gold)Source Servers"
 license = "MIT OR Apache-2.0"
-repository = "TODO:"
+repository = "https://github.com/c-ewing/rust-a2s"
 documentation = "TODO: if its good neough to put on crates.io then put it in"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
