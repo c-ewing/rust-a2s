@@ -18,8 +18,8 @@ All requests are parsed in [`requests`]
 pub mod info;
 /// Parsing [A2S Packets](https://developer.valvesoftware.com/wiki/Server_queries#Protocol)
 pub mod packet;
-// TODO: Doc
-pub mod parser_util;
+/// General parser helper functions
+mod parser_util;
 /// Parsing complete responses to [A2S_PING](https://developer.valvesoftware.com/wiki/Server_queries#A2A_PING) requests for [Gold Source](https://developer.valvesoftware.com/wiki/Goldsource) and [Source](https://developer.valvesoftware.com/wiki/Source)
 pub mod ping;
 /// Parsing complete responses to [A2S_PLAYER](https://developer.valvesoftware.com/wiki/Server_queries#A2A_PLAYER) requests for [Gold Source](https://developer.valvesoftware.com/wiki/Goldsource) and [Source](https://developer.valvesoftware.com/wiki/Source)
@@ -31,4 +31,4 @@ pub mod rules;
 
 // TODO: Parse any slice provided and attempt to make a packet out of it
 // Need to figure out how to return different packet types from one function call and how to determine
-// split gold source from split source
+// --> Enum with types Sourceresponse(SourceResponce)
