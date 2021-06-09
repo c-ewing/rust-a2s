@@ -2,13 +2,14 @@ use nom::{combinator::all_consuming, error::Error, Finish, IResult};
 
 use crate::parser_util::c_string;
 
-// # Exposed final parser
+// # Public parser
 /**
-Attempts to parse the provided payload into a ping response
+Attempts to parse the provided slice into a ping response
 # Warning: Depreciated according to the wiki
 [Wiki Page](https://developer.valvesoftware.com/wiki/Server_queries#A2A_PING)
 
-Source servers respond with `"00000000000000"`, while Gold Source servers respond with `""`.
+Source servers respond with `00000000000000\0`, while Gold Source servers respond with `\0`.
+The null value is dropped in the returned String.
 Any other response should be considered invalid.
 
 # Errors
@@ -19,8 +20,7 @@ A [`nom::error::Error`](https://docs.rs/nom/6.1.2/nom/error/struct.Error.html) r
 Parsing of a Source server response
 ```
 use a2s_parse::ping::parse_ping;
-// Omitts first 5 bytes as parse_player assumes the packet data has been combined
-// and the message type determined
+// Payload omitts first 5 bytes as parse_player assumes the packet and payload type have been determined
 let payload: [u8; 15] = [
     0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x00,
 ];
@@ -45,7 +45,7 @@ fn p_ping(input: &[u8]) -> IResult<&[u8], String> {
     all_consuming(c_string)(input)
 }
 
-// # Test
+// # Tests
 #[test]
 fn goldsource_response() {
     // Omitts first 5 bytes as parse_ping assumes the packet data has been combined and the message type determined
