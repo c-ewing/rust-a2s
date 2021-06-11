@@ -1,4 +1,4 @@
-use crate::parser_util::c_string;
+use crate::parser_util::{c_string, opt_le_u8};
 
 use nom::{
     combinator::all_consuming,
@@ -30,8 +30,7 @@ pub struct TheShipData {
 }
 
 // # Exposed final parser
-// TODO: comment better
-// Returns the player info or an error if the parsing failed or there was remaining data in the input
+/// Returns player info or an error if the parsing failed or there was remaining data in the input
 pub fn parse_player(input: &[u8]) -> Result<ResponsePlayer, Error<&[u8]>> {
     match p_player(input).finish() {
         Ok(v) => Ok(v.1),
@@ -47,14 +46,30 @@ pub fn p_player(input: &[u8]) -> IResult<&[u8], ResponsePlayer> {
 
 // Does the bulk of the parsing
 fn player(input: &[u8]) -> IResult<&[u8], ResponsePlayer> {
-    let (input, players) = le_u8(input)?;
+    // If no players are connected a server can only transmit the header byte and no other data
+    let (input, players) = opt_le_u8(input)?;
+
+    let players = match players {
+        Some(v) => v,
+        None => {
+            return Ok((
+                input,
+                ResponsePlayer {
+                    players: 0,
+                    player_data: Vec::new(),
+                },
+            ))
+        }
+    };
+
     let (input, mut player_data) = many_player_data(input, players)?;
 
     // The Ship adds fields after the regular player data
     let (input, ship_data) = many_the_ship_data(input, players)?;
 
-    // If there is ship data, add it to already collected player data
-    if !ship_data.is_empty() {
+    // If there is ship data, add it to already collected player data if they are the same length
+    // TODO: If the length doesn't match the ship data invalid?
+    if ship_data.len() == player_data.len() {
         // Iterate over the mutable player data pair with the associated ship data and replace the default
         // None in the player data with a copy of the ship data
         player_data
@@ -109,134 +124,133 @@ fn ship_data(input: &[u8]) -> IResult<&[u8], TheShipData> {
 }
 
 // # Test
+
 #[test]
-fn two_player() {
-    // Packet from souce wiki
-    // Omitts first 5 bytes as parse_player assumes the packet data has been combined and the message type determined
-    let player: [u8; 49] = [
-        0x02, 0x01, 0x5B, 0x44, 0x5D, 0x2D, 0x2D, 0x2D, 0x2D, 0x3E, 0x54, 0x2E, 0x4E, 0x2E, 0x57,
-        0x3C, 0x2D, 0x2D, 0x2D, 0x2D, 0x00, 0x0E, 0x00, 0x00, 0x00, 0xB4, 0x97, 0x00, 0x44, 0x02,
-        0x4B, 0x69, 0x6C, 0x6C, 0x65, 0x72, 0x20, 0x21, 0x21, 0x21, 0x00, 0x05, 0x00, 0x00, 0x00,
-        0x69, 0x24, 0xD9, 0x43,
-    ];
+fn short_all_players_connected() {
+    let player_bytes = include_bytes!("../test_bytes/cblaCS16.players");
 
-    let response = parse_player(&player).unwrap();
+    // Skip the header byte
+    let players = parse_player(&player_bytes[1..]).unwrap();
 
-    let expected_players = vec![
+    assert_eq!(6, players.players);
+    assert_eq!(6, players.player_data.len());
+    // Check the first and last players just to be sure
+    assert_eq!(
         PlayerData {
-            index: 1,
-            name: "[D]---->T.N.W<----".to_string(),
-            score: 14,
-            duration: 514.37036f32,
-            ship_data: None,
+            index: 0,
+            name: "RAGE OF THE BOY".to_string(),
+            score: 0,
+            duration: 2447.0,
+            ship_data: None
         },
+        players.player_data[0]
+    );
+    assert_eq!(
         PlayerData {
-            index: 2,
-            name: "Killer !!!".to_string(),
-            score: 5,
-            duration: 434.28445f32,
-            ship_data: None,
+            index: 0,
+            name: "dslodolce".to_string(),
+            score: 8,
+            duration: 3697.25,
+            ship_data: None
         },
-    ];
-
-    assert_eq!(2, response.players);
-    assert_eq!(expected_players, response.player_data)
+        players.player_data[5]
+    );
 }
 
 #[test]
-fn connecting_player() {
-    // Packet from souce wiki
-    // Omitts first 5 bytes as parse_player assumes the packet data has been combined and the message type determined
-    let player: [u8; 29] = [
-        0x02, 0x01, 0x5B, 0x44, 0x5D, 0x2D, 0x2D, 0x2D, 0x2D, 0x3E, 0x54, 0x2E, 0x4E, 0x2E, 0x57,
-        0x3C, 0x2D, 0x2D, 0x2D, 0x2D, 0x00, 0x0E, 0x00, 0x00, 0x00, 0xB4, 0x97, 0x00, 0x44,
-    ];
+fn short_the_ship() {
+    let player_bytes = include_bytes!("../test_bytes/mucosmosTheShip.players");
 
-    let response = parse_player(&player).unwrap();
+    // Skip the header byte
+    let players = parse_player(&player_bytes[1..]).unwrap();
 
-    let expected_player = vec![PlayerData {
-        index: 1,
-        name: "[D]---->T.N.W<----".to_string(),
-        score: 14,
-        duration: 514.37036f32,
-        ship_data: None,
-    }];
-
-    assert_eq!(2, response.players);
-    assert_eq!(expected_player, response.player_data);
-}
-
-#[test]
-fn the_ship_player_data() {
-    // Packet from souce wiki
-    // Omitts first 5 bytes as parse_player assumes the packet data has been combined and the message type determined
-    let the_ship_players: [u8; 167] = [
-        0x06, 0x00, 0x53, 0x68, 0x69, 0x70, 0x6D, 0x61, 0x74, 0x65, 0x31, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x80, 0xBF, 0x01, 0x53, 0x68, 0x69, 0x70, 0x6D, 0x61, 0x74, 0x65, 0x32,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0xBF, 0x02, 0x53, 0x68, 0x69, 0x70, 0x6D,
-        0x61, 0x74, 0x65, 0x33, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0xBF, 0x03, 0x53,
-        0x68, 0x69, 0x70, 0x6D, 0x61, 0x74, 0x65, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x80, 0xBF, 0x04, 0x53, 0x68, 0x69, 0x70, 0x6D, 0x61, 0x74, 0x65, 0x35, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x80, 0xBF, 0x07, 0x28, 0x31, 0x29, 0x4C, 0x61, 0x6E, 0x64, 0x4C,
-        0x75, 0x62, 0x62, 0x65, 0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0xD3, 0x8E, 0x68, 0x45, 0x00,
-        0x00, 0x00, 0x00, 0xC4, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC4, 0x09, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0xC4, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC4, 0x09, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0xC4, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC4, 0x09,
-        0x00, 0x00,
-    ];
-
-    let response = parse_player(&the_ship_players).unwrap();
-
-    let default_ship_data = Some(TheShipData {
-        deaths: 0,
-        money: 2500,
-    });
-
-    let expected_players = vec![
+    assert_eq!(5, players.players);
+    assert_eq!(5, players.player_data.len());
+    // Check the first and last players just to be sure
+    assert_eq!(
         PlayerData {
             index: 0,
             name: "Shipmate1".to_string(),
-            score: 0,
+            score: 1,
             duration: -1.0,
-            ship_data: default_ship_data.to_owned(),
+            ship_data: Some(TheShipData {
+                deaths: 0,
+                money: 4970
+            })
         },
-        PlayerData {
-            index: 1,
-            name: "Shipmate2".to_string(),
-            score: 0,
-            duration: -1.0,
-            ship_data: default_ship_data.to_owned(),
-        },
-        PlayerData {
-            index: 2,
-            name: "Shipmate3".to_string(),
-            score: 0,
-            duration: -1.0,
-            ship_data: default_ship_data.to_owned(),
-        },
-        PlayerData {
-            index: 3,
-            name: "Shipmate4".to_string(),
-            score: 0,
-            duration: -1.0,
-            ship_data: default_ship_data.to_owned(),
-        },
+        players.player_data[0]
+    );
+    assert_eq!(
         PlayerData {
             index: 4,
             name: "Shipmate5".to_string(),
             score: 0,
             duration: -1.0,
-            ship_data: default_ship_data.to_owned(),
+            ship_data: Some(TheShipData {
+                deaths: 0,
+                money: 840
+            })
         },
-        PlayerData {
-            index: 7,
-            name: "(1)LandLubber".to_string(),
-            score: 0,
-            duration: 3720.9265,
-            ship_data: default_ship_data.to_owned(),
-        },
-    ];
+        players.player_data[4]
+    );
+}
 
-    assert_eq!(6, response.players);
-    assert_eq!(expected_players, response.player_data);
+#[test]
+fn no_connected_players() {
+    let player_bytes = include_bytes!("../test_bytes/chaoticTTT.players");
+
+    // Skip the header byte
+    let players = parse_player(&player_bytes[1..]).unwrap();
+
+    assert_eq!(0, players.players);
+    assert_eq!(0, players.player_data.len());
+}
+
+#[test]
+fn connecting_player() {
+    let player_bytes = include_bytes!("../test_bytes/deathmatchTF2.players");
+
+    // Skip the header byte
+    // Stop before the actual end of the player list to simulate a player not being fully connected
+    let players = parse_player(&player_bytes[1..213]).unwrap();
+
+    assert_eq!(11, players.players);
+    assert_eq!(10, players.player_data.len());
+
+    println!("{:?}", players);
+    // Check the first and last players just to be sure
+    assert_eq!(
+        PlayerData {
+            index: 0,
+            name: "chinosdjjeej".to_string(),
+            score: 43,
+            duration: 4219.23,
+            ship_data: None
+        },
+        players.player_data[0]
+    );
+    assert_eq!(
+        PlayerData {
+            index: 0,
+            name: "poot".to_string(),
+            score: 6,
+            duration: 656.1299,
+            ship_data: None
+        },
+        players.player_data[9]
+    );
+}
+
+#[test]
+fn extra_data_after_players() {
+    let mut player_bytes = include_bytes!("../test_bytes/cblaCS16.players").to_vec();
+    player_bytes.extend(&[0xFF, 0xFF, 0xFF]);
+
+    // Skip the header byte
+    let players = parse_player(&player_bytes[1..]).unwrap_err();
+
+    let error = nom::error::Error::new(&[0xFF, 0xFF, 0xFF][..], nom::error::ErrorKind::Eof);
+
+    assert_eq!(error, players);
+    
 }
