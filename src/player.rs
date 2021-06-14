@@ -12,8 +12,7 @@ use nom::{
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlayerResponse {
     pub players: u8,
-    pub player_data: Vec<PlayerData
-  ,
+    pub player_data: Vec<PlayerData>,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlayerData {
@@ -56,7 +55,7 @@ fn player(input: &[u8]) -> IResult<&[u8], PlayerResponse> {
         None => {
             return Ok((
                 input,
-                ResponsePlayer {
+                PlayerResponse {
                     players: 0,
                     player_data: Vec::new(),
                 },
@@ -254,5 +253,4 @@ fn extra_data_after_players() {
     let error = nom::error::Error::new(&[0xFF, 0xFF, 0xFF][..], nom::error::ErrorKind::Eof);
 
     assert_eq!(error, players);
-    
 }

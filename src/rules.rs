@@ -34,7 +34,7 @@ pub struct RuleData {
 
 /// TODO: If there is remaining data after parsing the correct number of rules then raise an error
 pub fn parse_rules(input: &[u8]) -> Result<RulesResponse, Error<&[u8]>> {
-    match p_rules(input).finish() {
+    match rules(input).finish() {
         Ok(v) => Ok(v.1),
         Err(e) => Err(e),
     }
@@ -63,9 +63,8 @@ fn rules(input: &[u8]) -> IResult<&[u8], RulesResponse> {
     Ok((
         input,
         RulesResponse {
-            rules: num_rules,
-            rule_data,
-
+            num_rules,
+            rules: rule_data,
             remaining_data,
         },
     ))
