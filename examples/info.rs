@@ -3,17 +3,19 @@ use std::{
     time::Duration,
 };
 
+use a2s_parse::{
+    info::parse_source_info,
+    packet::{is_payload_split, parse_single_packet},
+};
+
 extern crate a2s_parse;
 
 fn main() -> () {
     let remote_addr = SocketAddr::from(([208, 103, 169, 70], 27022));
 
-    let info_request = b"TSource Engine Query\0";
-    // need the packet header as well
-    let mut header = [0xFF, 0xFF, 0xFF, 0xFF].to_vec();
-    header.extend(info_request);
+    let info_request = a2s_parse::info::REQUEST_INFO;
 
-    println!("Packet: {:X?}", header);
+    println!("Packet: {:X?}", info_request);
 
     // Start udp stuff
     let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
@@ -25,7 +27,7 @@ fn main() -> () {
     println!("Local: {:?}", socket.local_addr());
     println!("Remote: {:?}", socket.peer_addr());
 
-    let _res = socket.send(&header).expect("Failed to send");
+    let _res = socket.send(&info_request).expect("Failed to send");
 
     // MTU is usually 1248 but this just gives some room just in case
     let mut buf = vec![0u8; 1600];
@@ -34,15 +36,18 @@ fn main() -> () {
     // Trim down to just the recieved data
     buf.resize(size, 0);
 
-    println!(
-        "Received: {} from: {:?}",
-        String::from_utf8_lossy(&buf),
-        r_addr
-    );
-    println!("Raw Buffer: {:?}", buf);
-    // Skip the packet type + header for now
-    // TODO: Show the full parsing steps
-    let info = a2s_parse::info::parse_source_info(&buf[5..]).expect("Failed to parse info");
+    println!("Received: {:X?} from: {:?}", buf, r_addr);
 
-    println!("INFO: {:?}", info);
+    // Parse the packet type and header:
+
+    if is_payload_split(&buf).expect("Failed") {
+        panic!("Should have been a single packet response!");
+    }
+    // Skip the first 4 bytes as they indicate if the packet is split or not
+    let packet = parse_single_packet(&buf[4..]).expect("Failed to parse header and message type");
+
+    println!(
+        "INFO: {:?}",
+        parse_source_info(packet.payload).expect("Failed to parse info")
+    )
 }
