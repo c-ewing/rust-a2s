@@ -57,7 +57,15 @@ fn goldsource_response() {
 }
 
 #[test]
-fn source_response() {}
+fn source_response() {
+    let payload: [u8; 15] = [
+        0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x00,
+    ];
+
+    let response = parse_ping(&payload).unwrap();
+
+    assert_eq!("00000000000000".to_string(), response);
+}
 
 #[test]
 fn no_payload() {

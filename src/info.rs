@@ -120,7 +120,7 @@ pub struct TheShipFields {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 /// Data contained within an [GoldSource A2S_INFO Response](https://developer.valvesoftware.com/wiki/Server_queries#Obsolete_GoldSource_Response)
-pub struct GoldSourceResponseInfo {
+pub struct PreGoldSourceResponseInfo {
     /// Server IP address IPV4:PORT
     pub address: String,
     /// Name of the Server
@@ -206,10 +206,10 @@ pub struct SourceResponseInfo {
 }
 
 // # Public Parsers
-/// Takes a slice of bytes and attempts to parse a GoldSource info response out of it
+/// Takes a slice of bytes and attempts to parse a PreGoldSource Server info response out of it
 /// The parsing itself occurs withing p_goldsource_info, this just converts the IResult to a Result
-pub fn parse_goldsource_info(input: &[u8]) -> Result<GoldSourceResponseInfo, Error<&[u8]>> {
-    match p_goldsource_info(input).finish() {
+pub fn parse_pregoldsource_info(input: &[u8]) -> Result<PreGoldSourceResponseInfo, Error<&[u8]>> {
+    match p_pregoldsource_info(input).finish() {
         Ok(v) => Ok(v.1),
         Err(e) => Err(e),
     }
@@ -224,8 +224,8 @@ pub fn parse_source_info(input: &[u8]) -> Result<SourceResponseInfo, Error<&[u8]
 }
 
 // # Support Parsers
-// Does the parsing for goldsource info responses
-fn p_goldsource_info(input: &[u8]) -> IResult<&[u8], GoldSourceResponseInfo> {
+// Does the parsing for pregoldsource server info responses
+fn p_pregoldsource_info(input: &[u8]) -> IResult<&[u8], PreGoldSourceResponseInfo> {
     let (input, address) = c_string(input)?;
     let (input, name) = c_string(input)?;
     let (input, map) = c_string(input)?;
@@ -248,16 +248,16 @@ fn p_goldsource_info(input: &[u8]) -> IResult<&[u8], GoldSourceResponseInfo> {
     let (input, bots) = le_u8(input)?;
 
     // If the input is not empty there is extra data that shouldn't be there, raise a soft error so other parsers can be tried
-    if !input.is_empty() {
-        return Err(nom::Err::Error(nom::error::Error {
-            input,
-            code: nom::error::ErrorKind::TooLarge,
-        }));
-    }
+    // if !input.is_empty() {
+    //     return Err(nom::Err::Error(nom::error::Error {
+    //         input,
+    //         code: nom::error::ErrorKind::TooLarge,
+    //     }));
+    // }
 
     Ok((
         input,
-        GoldSourceResponseInfo {
+        PreGoldSourceResponseInfo {
             address,
             name,
             map,
@@ -354,47 +354,53 @@ fn p_source_info(input: &[u8]) -> IResult<&[u8], SourceResponseInfo> {
 
     // Parse the extra data fields if the flag is not 0
     // if `EDF & 0x80` then the servers port is also transmitted
-    let (input, port) = match extra_data_flag {
-        0x80 => le_i16(input).map(|(next, val)| (next, Some(val)))?,
-        _ => (input, None),
+    let (input, port) = if extra_data_flag & 0x80 == 0x80 {
+        le_i16(input).map(|(next, val)| (next, Some(val)))?
+    } else {
+        (input, None)
     };
 
     // if `EDF & 0x10` then servers steam ID is transmitted
-    let (input, steam_id) = match extra_data_flag {
-        0x10 => le_u64(input).map(|(next, val)| (next, Some(val)))?,
-        _ => (input, None),
+    let (input, steam_id) = if extra_data_flag & 0x10 == 0x10 {
+        le_u64(input).map(|(next, val)| (next, Some(val)))?
+    } else {
+        (input, None)
     };
 
     // if `EDF & 0x40` then the spectator port number and name of the spectator server for SourceTV are contained
-    let (input, source_tv_port) = match extra_data_flag {
-        0x40 => le_i16(input).map(|(next, val)| (next, Some(val)))?,
-        _ => (input, None),
+    let (input, source_tv_port) = if extra_data_flag & 0x40 == 0x40 {
+        le_i16(input).map(|(next, val)| (next, Some(val)))?
+    } else {
+        (input, None)
     };
 
-    let (input, source_tv_name) = match extra_data_flag {
-        0x40 => c_string(input).map(|(next, val)| (next, Some(val)))?,
-        _ => (input, None),
+    let (input, source_tv_name) = if extra_data_flag & 0x40 == 0x40 {
+        c_string(input).map(|(next, val)| (next, Some(val)))?
+    } else {
+        (input, None)
     };
 
     // if `EDF & 0x20` then tags that describe the game are transmitted
-    let (input, keywords) = match extra_data_flag {
-        0x20 => c_string(input).map(|(next, val)| (next, Some(val)))?,
-        _ => (input, None),
+    let (input, keywords) = if extra_data_flag & 0x20 == 0x20 {
+        c_string(input).map(|(next, val)| (next, Some(val)))?
+    } else {
+        (input, None)
     };
 
     // if `EDF & 0x01` then the full game ID and untruncated App ID are contained.
-    let (input, game_id) = match extra_data_flag {
-        0x01 => le_u64(input).map(|(next, val)| (next, Some(val)))?,
-        _ => (input, None),
+    let (input, game_id) = if extra_data_flag & 0x01 == 0x01 {
+        le_u64(input).map(|(next, val)| (next, Some(val)))?
+    } else {
+        (input, None)
     };
 
-    // If the input is not empty there is extra data that shouldn't be there, raise a soft error so other parsers can be tried
-    // if !input.is_empty() {
-    //     return Err(nom::Err::Error(nom::error::Error {
-    //         input,
-    //         code: nom::error::ErrorKind::TooLarge,
-    //     }));
-    // }
+    //If the input is not empty there is extra data that shouldn't be there, raise a soft error so other parsers can be tried
+    if !input.is_empty() {
+        return Err(nom::Err::Error(nom::error::Error {
+            input,
+            code: nom::error::ErrorKind::TooLarge,
+        }));
+    }
 
     Ok((
         input,
@@ -462,7 +468,6 @@ fn the_ship(input: &[u8]) -> IResult<&[u8], Option<TheShipFields>> {
 /// Reads one byte from the input slice and returns the ServerType for goldsource
 fn server_type(input: &[u8]) -> IResult<&[u8], ServerType> {
     let (input, value) = le_u8(input)?;
-
     let server_type = match value {
         // 'D' or 'd'
         0x44 => ServerType::Dedicated,
@@ -524,102 +529,72 @@ fn environment(input: &[u8]) -> IResult<&[u8], Environment> {
 
 #[test]
 fn info_garrysmod() {
+    // Contains extra data flags
     let info_bytes = include_bytes!("../test_bytes/chaoticTTT.info");
-
-    let response = parse_source_info(info_bytes);
-
-    println!("{:X?}", response);
-}
-
-#[test]
-fn info_cs() {
-    // Packet from souce wiki
-    // Omitts first 5 bytes as parse_source_info assumes the packet data has been combined and the message type determined
-    let cs: [u8; 150] = [
-        0x37, 0x37, 0x2E, 0x31, 0x31, 0x31, 0x2E, 0x31, 0x39, 0x34, 0x2E, 0x31, 0x31, 0x30, 0x3A,
-        0x32, 0x37, 0x30, 0x31, 0x35, 0x00, 0x46, 0x52, 0x20, 0x2D, 0x20, 0x56, 0x65, 0x72, 0x79,
-        0x47, 0x61, 0x6D, 0x65, 0x73, 0x2E, 0x6E, 0x65, 0x74, 0x20, 0x2D, 0x20, 0x44, 0x65, 0x61,
-        0x74, 0x6D, 0x61, 0x74, 0x63, 0x68, 0x20, 0x2D, 0x20, 0x6F, 0x6E, 0x6C, 0x79, 0x20, 0x73,
-        0x75, 0x72, 0x66, 0x5F, 0x73, 0x6B, 0x69, 0x20, 0x2D, 0x20, 0x6E, 0x67, 0x52, 0x00, 0x73,
-        0x75, 0x72, 0x66, 0x5F, 0x73, 0x6B, 0x69, 0x00, 0x63, 0x73, 0x74, 0x72, 0x69, 0x6B, 0x65,
-        0x00, 0x43, 0x6F, 0x75, 0x6E, 0x74, 0x65, 0x72, 0x2D, 0x53, 0x74, 0x72, 0x69, 0x6B, 0x65,
-        0x00, 0x0C, 0x12, 0x2F, 0x64, 0x6C, 0x00, 0x01, 0x77, 0x77, 0x77, 0x2E, 0x63, 0x6F, 0x75,
-        0x6E, 0x74, 0x65, 0x72, 0x2D, 0x73, 0x74, 0x72, 0x69, 0x6B, 0x65, 0x2E, 0x6E, 0x65, 0x74,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x9E, 0xF7, 0x0A, 0x00, 0x01, 0x01, 0x00,
-    ];
-
-    let response = parse_goldsource_info(&cs).unwrap();
+    // Skip the first byte, its the header and is used to pick which parser is run
+    let response = parse_source_info(&info_bytes[1..]).unwrap();
 
     assert_eq!(
-        GoldSourceResponseInfo {
-            address: "77.111.194.110:27015".to_string(),
-            name: "FR - VeryGames.net - Deatmatch - only surf_ski - ngR".to_string(),
-            map: "surf_ski".to_string(),
-            folder: "cstrike".to_string(),
-            game: "Counter-Strike".to_string(),
-            players: 12,
-            max_players: 18,
-            protocol: 47,
-            server_type: ServerType::Dedicated,
-            environment: Environment::Linux,
-            visibility: false,
-            mod_half_life: true,
-            mod_fields: Some(HalfLifeMod {
-                link: "www.counter-strike.net".to_string(),
-                download_link: "".to_string(),
-                version: 1,
-                size: 184000000,
-                mod_type: ModType::SingleAndMultiplayer,
-                dll: ModDLL::Custom,
-            }),
-            vac: true,
+        SourceResponseInfo {
+            protocol: 0x11,
+            name: "Chaotic TTT | Mostly Vanilla".to_string(),
+            map: "ttt_submarine".to_string(),
+            folder: "garrysmod".to_string(),
+            game: "Trouble in Terrorist Town".to_string(),
+            app_id: 4000,
+            players: 0,
+            max_players: 24,
             bots: 0,
+            server_type: ServerType::Dedicated,
+            environment: Environment::Windows,
+            visibility: false,
+            vac: true,
+            the_ship: None,
+            version: "2020.10.14".to_string(),
+
+            extra_data_flag: 0xB1,
+            port: Some(27035),
+            steam_id: Some(0x1300000003A5F1E),
+            source_tv_port: None,
+            source_tv_name: None,
+            keywords: Some(" gm:terrortown gmc:pvp loc:us ver:210402".to_string()),
+            game_id: Some(4000)
         },
         response
     );
 }
 
 #[test]
-fn info_css() {
-    // Packet from souce wiki
-    // Omitts first 5 bytes as parse_source_info assumes the packet data has been combined and the message type determined
-    let css: [u8; 95] = [
-        0x02, 0x67, 0x61, 0x6D, 0x65, 0x32, 0x78, 0x73, 0x2E, 0x63, 0x6F, 0x6D, 0x20, 0x43, 0x6F,
-        0x75, 0x6E, 0x74, 0x65, 0x72, 0x2D, 0x53, 0x74, 0x72, 0x69, 0x6B, 0x65, 0x20, 0x53, 0x6F,
-        0x75, 0x72, 0x63, 0x65, 0x20, 0x23, 0x31, 0x00, 0x64, 0x65, 0x5F, 0x64, 0x75, 0x73, 0x74,
-        0x00, 0x63, 0x73, 0x74, 0x72, 0x69, 0x6B, 0x65, 0x00, 0x43, 0x6F, 0x75, 0x6E, 0x74, 0x65,
-        0x72, 0x2D, 0x53, 0x74, 0x72, 0x69, 0x6B, 0x65, 0x3A, 0x20, 0x53, 0x6F, 0x75, 0x72, 0x63,
-        0x65, 0x00, 0xF0, 0x00, 0x05, 0x10, 0x04, 0x64, 0x6C, 0x00, 0x00, 0x31, 0x2E, 0x30, 0x2E,
-        0x30, 0x2E, 0x32, 0x32, 0x00,
-    ];
-
-    let response = parse_source_info(&css).unwrap();
+fn info_cs16() {
+    let info_bytes = include_bytes!("../test_bytes/cblaCS16.info");
+    // Skip the first byte, its the header and is used to pick which parser is run
+    let response = parse_source_info(&info_bytes[1..]).unwrap();
 
     assert_eq!(
         SourceResponseInfo {
-            protocol: 2,
-            name: "game2xs.com Counter-Strike Source #1".to_string(),
-            map: "de_dust".to_string(),
+            protocol: 48,
+            name: "CBLA at Vimy CS 1.6".to_string(),
+            map: "cs_italy".to_string(),
             folder: "cstrike".to_string(),
-            game: "Counter-Strike: Source".to_string(),
-            app_id: 240,
-            players: 5,
-            max_players: 16,
-            bots: 4,
+            game: "Counter-Strike".to_string(),
+            app_id: 10,
+            players: 9,
+            max_players: 10,
+            bots: 9,
             server_type: ServerType::Dedicated,
             environment: Environment::Linux,
-            visibility: false,
-            vac: false,
+            visibility: true,
+            vac: true,
             the_ship: None,
-            version: "1.0.0.22".to_string(),
-            extra_data_flag: 0,
+            version: "1.1.2.7/Stdio".to_string(),
 
-            port: None,
-            steam_id: None,
+            extra_data_flag: 177,
+            port: Some(27015),
+            steam_id: Some(90147598802991112),
             source_tv_port: None,
             source_tv_name: None,
-            keywords: None,
-            game_id: None
+            keywords: Some("".to_string()),
+            game_id: Some(10),
         },
         response
     );
@@ -627,45 +602,75 @@ fn info_css() {
 
 #[test]
 fn info_the_ship() {
-    // Omitts first 5 bytes as parse_source_info assumes the packet data has been combined and the message type determined
-    let ship: [u8; 56] = [
-        0x07, 0x53, 0x68, 0x69, 0x70, 0x20, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x00, 0x62, 0x61,
-        0x74, 0x61, 0x76, 0x69, 0x65, 0x72, 0x00, 0x73, 0x68, 0x69, 0x70, 0x00, 0x54, 0x68, 0x65,
-        0x20, 0x53, 0x68, 0x69, 0x70, 0x00, 0x60, 0x09, 0x01, 0x05, 0x00, 0x6C, 0x77, 0x00, 0x00,
-        0x01, 0x03, 0x03, 0x31, 0x2E, 0x30, 0x2E, 0x30, 0x2E, 0x34, 0x00,
-    ];
+    let info_bytes = include_bytes!("../test_bytes/mucosmosTheShip.info");
 
-    let response = parse_source_info(&ship).unwrap();
+    let response = parse_source_info(&info_bytes[1..]).unwrap();
 
     assert_eq!(
         SourceResponseInfo {
             protocol: 7,
-            name: "Ship Server".to_string(),
-            map: "batavier".to_string(),
+            name: "mucosmos.nl Pakjesboot 12 : Cruise ships : Votekick disabled".to_string(),
+            map: "huronian".to_string(),
             folder: "ship".to_string(),
             game: "The Ship".to_string(),
             app_id: 2400,
-            players: 1,
-            max_players: 5,
-            bots: 0,
-            server_type: ServerType::NonDedicated,
+            players: 5,
+            max_players: 32,
+            bots: 5,
+            server_type: ServerType::Dedicated,
             environment: Environment::Windows,
             visibility: false,
             vac: false,
             the_ship: Some(TheShipFields {
-                mode: TheShipGameMode::Elimination,
-                witnesses: 3,
+                mode: TheShipGameMode::Hunt,
+                witnesses: 2,
                 duration: 3,
             }),
-            version: "1.0.0.4".to_string(),
-            extra_data_flag: 0,
+            version: "1.0.0.16".to_string(),
 
+            extra_data_flag: 0,
             port: None,
             steam_id: None,
             source_tv_port: None,
             source_tv_name: None,
             keywords: None,
-            game_id: None
+            game_id: None,
+        },
+        response
+    );
+}
+
+#[test]
+fn info_sourcetv() {
+    let info_bytes = include_bytes!("../test_bytes/deathmatchTF2.info");
+
+    let response = parse_source_info(&info_bytes[1..]).unwrap();
+
+    assert_eq!(
+        SourceResponseInfo {
+            protocol: 47,
+            name: "DeathMatchTF".to_string(),
+            map: "koth_harvest_final".to_string(),
+            folder: "tf".to_string(),
+            game: "Team Fortress".to_string(),
+            app_id: 440,
+            players: 0,
+            max_players: 128,
+            bots: 0,
+            server_type: ServerType::Dedicated,
+            environment: Environment::Linux,
+            visibility: false,
+            vac: true,
+            the_ship: None,
+            version: "6394067".to_string(),
+
+            extra_data_flag: 113,
+            port: None,
+            steam_id: Some(90147603733485569),
+            source_tv_port: Some(27020),
+            source_tv_name: Some("DeathMatchTF".to_string()),
+            keywords: Some("alltalk,cp,deathmatch,deathmatchtf,dmtf,harvest,harvest1,increased_maxplayers,nocrits,norespawntime".to_string()),
+            game_id: Some(440),
         },
         response
     );
