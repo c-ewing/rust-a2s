@@ -1,6 +1,10 @@
 use nom::{
-    bytes::complete::take_till, character::complete::char, combinator::opt,
-    number::complete::le_u8, sequence::terminated, IResult,
+    bytes::complete::take_till,
+    character::complete::char,
+    combinator::opt,
+    number::complete::{le_i32, le_u8},
+    sequence::terminated,
+    IResult,
 };
 
 /// Parses a C style String
@@ -14,6 +18,11 @@ pub(crate) fn c_string(input: &[u8]) -> IResult<&[u8], String> {
 /// Attempts to parse a byte, if the parser fails None is returned
 pub(crate) fn opt_le_u8(input: &[u8]) -> IResult<&[u8], Option<u8>> {
     opt(le_u8)(input)
+}
+
+/// Attempts to parse a little endian i32, if the parser fails None is returned
+pub(crate) fn opt_le_i32(input: &[u8]) -> IResult<&[u8], Option<i32>> {
+    opt(le_i32)(input)
 }
 
 /// Reads one null byte (0x00) from input. If the byte is not null an Error is returned.

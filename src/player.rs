@@ -10,9 +10,10 @@ use nom::{
 
 // # Structs
 #[derive(Clone, Debug, PartialEq)]
-pub struct ResponsePlayer {
+pub struct PlayerResponse {
     pub players: u8,
-    pub player_data: Vec<PlayerData>,
+    pub player_data: Vec<PlayerData
+  ,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlayerData {
@@ -30,8 +31,9 @@ pub struct TheShipData {
 }
 
 // # Exposed final parser
-/// Returns player info or an error if the parsing failed or there was remaining data in the input
-pub fn parse_player(input: &[u8]) -> Result<ResponsePlayer, Error<&[u8]>> {
+
+// Returns the player info or an error if the parsing failed or there was remaining data in the input
+pub fn parse_player(input: &[u8]) -> Result<PlayerResponse, Error<&[u8]>> {
     match p_player(input).finish() {
         Ok(v) => Ok(v.1),
         Err(e) => Err(e),
@@ -40,12 +42,12 @@ pub fn parse_player(input: &[u8]) -> Result<ResponsePlayer, Error<&[u8]>> {
 
 // # Private parsing helper functions
 // Makes sure that all of the input data was consumed, if not to much data was fed or something
-pub fn p_player(input: &[u8]) -> IResult<&[u8], ResponsePlayer> {
+pub fn p_player(input: &[u8]) -> IResult<&[u8], PlayerResponse> {
     all_consuming(player)(input)
 }
 
 // Does the bulk of the parsing
-fn player(input: &[u8]) -> IResult<&[u8], ResponsePlayer> {
+fn player(input: &[u8]) -> IResult<&[u8], PlayerResponse> {
     // If no players are connected a server can only transmit the header byte and no other data
     let (input, players) = opt_le_u8(input)?;
 
@@ -82,7 +84,7 @@ fn player(input: &[u8]) -> IResult<&[u8], ResponsePlayer> {
 
     Ok((
         input,
-        ResponsePlayer {
+        PlayerResponse {
             players,
             player_data,
         },

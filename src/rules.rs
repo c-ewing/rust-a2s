@@ -9,7 +9,7 @@ use crate::parser_util::c_string;
 /// Contains the data specified in an [`A2S_RULES response`](https://developer.valvesoftware.com/wiki/Server_queries#Response_Format_3)  
 /// Older games / engines may respond with a single packet response that truncates the rules somewhere in a rule : value pair.
 /// This truncated data is retained withing the remaining data field.
-pub struct ResponseRule {
+pub struct RulesResponse {
     /// Maximum number of rules contained within the response payload.
     pub num_rules: i16,
     /// Vec containing all the parsed rules : values pairs
@@ -31,7 +31,9 @@ pub struct RuleData {
 /// Parse the data specified in an [`A2S_RULES response`](https://developer.valvesoftware.com/wiki/Server_queries#Response_Format_3)  
 /// Older games / engines may respond with a single packet response that truncates the rules somewhere in a rule : value pair.
 /// This truncated data is retained withing the remaining data field.
-pub fn parse_rules(input: &[u8]) -> Result<ResponseRule, Error<&[u8]>> {
+
+/// TODO: If there is remaining data after parsing the correct number of rules then raise an error
+pub fn parse_rules(input: &[u8]) -> Result<RulesResponse, Error<&[u8]>> {
     match p_rules(input).finish() {
         Ok(v) => Ok(v.1),
         Err(e) => Err(e),
@@ -39,9 +41,9 @@ pub fn parse_rules(input: &[u8]) -> Result<ResponseRule, Error<&[u8]>> {
 }
 
 // # Private parsing helper functions
-/// Parse an A2S rules response
-fn p_rules(input: &[u8]) -> IResult<&[u8], ResponseRule> {
-    // Parse a maximum of num_rules
+
+/// Does the parsing
+fn rules(input: &[u8]) -> IResult<&[u8], RulesResponse> {
     let (input, num_rules) = le_i16(input)?;
     // Parse up to num_rules rules from the payload
     let (input, rule_data) = many_rule_data(input, num_rules)?;
@@ -60,9 +62,10 @@ fn p_rules(input: &[u8]) -> IResult<&[u8], ResponseRule> {
 
     Ok((
         input,
-        ResponseRule {
-            num_rules,
-            rules: rule_data,
+        RulesResponse {
+            rules: num_rules,
+            rule_data,
+
             remaining_data,
         },
     ))
