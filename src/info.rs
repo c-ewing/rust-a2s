@@ -247,13 +247,13 @@ fn p_pregoldsource_info(input: &[u8]) -> IResult<&[u8], PreGoldSourceResponseInf
     let (input, vac) = parse_bool(input)?;
     let (input, bots) = le_u8(input)?;
 
-    // If the input is not empty there is extra data that shouldn't be there, raise a soft error so other parsers can be tried
-    // if !input.is_empty() {
-    //     return Err(nom::Err::Error(nom::error::Error {
-    //         input,
-    //         code: nom::error::ErrorKind::TooLarge,
-    //     }));
-    // }
+    //If the input is not empty there is extra data that shouldn't be there, raise a soft error so other parsers can be tried
+    if !input.is_empty() {
+        return Err(nom::Err::Error(nom::error::Error {
+            input,
+            code: nom::error::ErrorKind::TooLarge,
+        }));
+    }
 
     Ok((
         input,
@@ -338,9 +338,9 @@ fn p_source_info(input: &[u8]) -> IResult<&[u8], SourceResponseInfo> {
     // Only if the app_id matches on of The Ships ids should we try and parse ship data
     let (input, the_ship) = match app_id {
         // The Ship AppIds
-        2400 | 2401 | 2402 | 2412 => the_ship(input)?,
+        2400 | 2401 | 2402 | 2412 => the_ship(input).map(|(input, ship)| (input, Some(ship)))?,
         // The Ship Tutorial AppIds
-        2430 | 2405 | 2406 => the_ship(input)?,
+        2430 | 2405 | 2406 => the_ship(input).map(|(input, ship)| (input, Some(ship)))?,
         // All other AppIds shouldn't have The Ship data
         _ => (input, None),
     };
@@ -431,7 +431,7 @@ fn p_source_info(input: &[u8]) -> IResult<&[u8], SourceResponseInfo> {
     ))
 }
 
-fn the_ship(input: &[u8]) -> IResult<&[u8], Option<TheShipFields>> {
+fn the_ship(input: &[u8]) -> IResult<&[u8], TheShipFields> {
     let (input, mode_value) = le_u8(input)?;
 
     let mode = match mode_value {
@@ -457,11 +457,11 @@ fn the_ship(input: &[u8]) -> IResult<&[u8], Option<TheShipFields>> {
 
     Ok((
         input,
-        Some(TheShipFields {
+        TheShipFields {
             mode,
             witnesses,
             duration,
-        }),
+        },
     ))
 }
 
@@ -470,14 +470,11 @@ fn server_type(input: &[u8]) -> IResult<&[u8], ServerType> {
     let (input, value) = le_u8(input)?;
     let server_type = match value {
         // 'D' or 'd'
-        0x44 => ServerType::Dedicated,
-        0x64 => ServerType::Dedicated,
+        0x44 | 0x64 => ServerType::Dedicated,
         // 'L' or 'l'
-        0x4C => ServerType::NonDedicated,
-        0x6C => ServerType::NonDedicated,
+        0x4C | 0x6C => ServerType::NonDedicated,
         // 'P' or 'p'
-        0x50 => ServerType::SourceTV,
-        0x70 => ServerType::SourceTV,
+        0x50 | 0x70 => ServerType::SourceTV,
         // 0
         0x00 => ServerType::RagDollKungFu,
         // Any other value is invalid
@@ -501,16 +498,11 @@ fn environment(input: &[u8]) -> IResult<&[u8], Environment> {
 
     let server_env = match value {
         // 'l' or 'L'
-        0x4C => Environment::Linux,
-        0x6C => Environment::Linux,
+        0x4C | 0x6C => Environment::Linux,
         // 'w' or 'W'
-        0x57 => Environment::Windows,
-        0x77 => Environment::Windows,
+        0x57 | 0x77 => Environment::Windows,
         // 'm' or 'M' or 'o' or 'O'
-        0x4D => Environment::MacOS,
-        0x6D => Environment::MacOS,
-        0x4F => Environment::MacOS,
-        0x6F => Environment::MacOS,
+        0x4D | 0x6D | 0x4F | 0x6F => Environment::MacOS,
         // Otherwise
         _ => Environment::Other,
     };
@@ -674,4 +666,138 @@ fn info_sourcetv() {
         },
         response
     );
+}
+
+#[test]
+fn info_pregoldsource() {
+    todo!("Need to find a pregoldsource server");
+}
+
+#[test]
+fn invalid_server_type() {
+    let empty: [u8; 0] = [];
+    let err = nom::Err::Error(nom::error::Error {
+        input: &empty[..],
+        code: nom::error::ErrorKind::IsNot,
+    });
+
+    for v in 0u8..=255u8 {
+        let val = [v];
+        match v {
+            // 'D' or 'd'
+            0x44 | 0x64 => assert_eq!(
+                ServerType::Dedicated,
+                server_type(&val).expect("Failed to parse").1
+            ),
+            // 'L' or 'l'
+            0x4C | 0x6C => assert_eq!(
+                ServerType::NonDedicated,
+                server_type(&val).expect("Failed to parse").1
+            ),
+            // 'P' or 'p'
+            0x50 | 0x70 => assert_eq!(
+                ServerType::SourceTV,
+                server_type(&val).expect("Failed to parse").1
+            ),
+            // 0
+            0x00 => assert_eq!(
+                ServerType::RagDollKungFu,
+                server_type(&val).expect("Failed to parse").1
+            ),
+            // Any other value is invalid
+            _ => assert_eq!(err, server_type(&val).expect_err("Should err")),
+        }
+    }
+}
+
+#[test]
+fn invalid_environment_type() {
+    let empty: [u8; 0] = [];
+    let err = nom::Err::Error(nom::error::Error {
+        input: &empty[..],
+        code: nom::error::ErrorKind::IsNot,
+    });
+
+    for v in 0u8..=255u8 {
+        let val = [v];
+        match v {
+            // 'l' or 'L'
+            0x4C | 0x6C => assert_eq!(
+                Environment::Linux,
+                environment(&val).expect("Failed to parse").1
+            ),
+            // 'w' or 'W'
+            0x57 | 0x77 => assert_eq!(
+                Environment::Windows,
+                environment(&val).expect("Failed to parse").1
+            ),
+            // 'm' or 'M' or 'o' or 'O'
+            0x4D | 0x6D | 0x4F | 0x6F => assert_eq!(
+                Environment::MacOS,
+                environment(&val).expect("Failed to parse").1
+            ),
+            // Otherwise
+            _ => assert_eq!(err, environment(&val).expect_err("Should err")),
+        }
+    }
+}
+
+#[test]
+fn invalid_ship_type() {
+    let mut val = [0, 0, 0];
+    let e: [u8; 2] = [0, 0];
+
+    let err = nom::Err::Error(nom::error::Error {
+        input: &e[..],
+        code: nom::error::ErrorKind::IsNot,
+    });
+
+    for v in 0u8..=255u8 {
+        val[0] = v;
+        match v {
+            0 => assert_eq!(
+                TheShipGameMode::Hunt,
+                the_ship(&val).expect("Failed to parse").1.mode
+            ),
+            1 => assert_eq!(
+                TheShipGameMode::Elimination,
+                the_ship(&val).expect("Failed to parse").1.mode
+            ),
+            2 => assert_eq!(
+                TheShipGameMode::Duel,
+                the_ship(&val).expect("Failed to parse").1.mode
+            ),
+            3 => assert_eq!(
+                TheShipGameMode::Deathmatch,
+                the_ship(&val).expect("Failed to parse").1.mode
+            ),
+            4 => assert_eq!(
+                TheShipGameMode::VIP_Team,
+                the_ship(&val).expect("Failed to parse").1.mode
+            ),
+            5 => assert_eq!(
+                TheShipGameMode::Team_Elimination,
+                the_ship(&val).expect("Failed to parse").1.mode
+            ),
+            _ => assert_eq!(err, the_ship(&val).expect_err("Should fail")),
+        }
+    }
+}
+
+#[test]
+fn extra_data_source() {
+    // Contains extra data flags
+    let mut info_bytes = include_bytes!("../test_bytes/chaoticTTT.info").to_vec();
+    info_bytes.extend(&[0xFF, 0xFF, 0xFF]);
+    // Skip the first byte, its the header and is used to pick which parser is run
+    let response_err = parse_source_info(&info_bytes[1..]).unwrap_err();
+
+    let error = nom::error::Error::new(&[0xFF, 0xFF, 0xFF][..], nom::error::ErrorKind::TooLarge);
+
+    assert_eq!(error, response_err);
+}
+
+#[test]
+fn extra_data_pregoldsource() {
+    todo!("Need to find pregoldsource server");
 }
