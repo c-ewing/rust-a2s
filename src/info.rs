@@ -670,7 +670,37 @@ fn info_sourcetv() {
 
 #[test]
 fn info_pregoldsource() {
-    todo!("Need to find a pregoldsource server");
+    let info_bytes = include_bytes!("../test_bytes/chineseDOD.info");
+
+    let response = parse_pregoldsource_info(&info_bytes[1..]).unwrap();
+
+    assert_eq!(
+        PreGoldSourceResponseInfo {
+            address: "127.0.0.1:27015".to_string(),
+            name: "【蓝海战队02】混战 无超级跳<北京双线>".to_string(),
+            map: "de_secteur918v2".to_string(),
+            folder: "dod".to_string(),
+            game: "www.dod168.com官网".to_string(),
+            players: 10,
+            max_players: 32,
+            protocol: 0x2F,
+            server_type: ServerType::Dedicated,
+            environment: Environment::Windows,
+            visibility: false,
+            mod_half_life: true,
+            mod_fields: Some(HalfLifeMod {
+                link: "".to_string(),
+                download_link: "".to_string(),
+                version: 1,
+                size: 0,
+                mod_type: ModType::MultiplayerOnly,
+                dll: ModDLL::HalfLife
+            }),
+            vac: true,
+            bots: 0
+        },
+        response
+    );
 }
 
 #[test]
@@ -799,5 +829,12 @@ fn extra_data_source() {
 
 #[test]
 fn extra_data_pregoldsource() {
-    todo!("Need to find pregoldsource server");
+    let mut info_bytes = include_bytes!("../test_bytes/chineseDOD.info").to_vec();
+    info_bytes.extend(&[0xFF, 0xFF, 0xFF]);
+
+    let response_err = parse_pregoldsource_info(&info_bytes[1..]).unwrap_err();
+
+    let error = nom::error::Error::new(&[0xFF, 0xFF, 0xFF][..], nom::error::ErrorKind::TooLarge);
+
+    assert_eq!(error, response_err);
 }

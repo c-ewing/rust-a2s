@@ -1,17 +1,14 @@
-use std::{
-    net::{SocketAddr, UdpSocket},
-    time::Duration,
-};
-
+#[allow(unused_imports)]
 use a2s_parse::{
-    info::parse_source_info,
+    info::{parse_pregoldsource_info, parse_source_info},
     packet::{is_payload_split, parse_single_packet},
 };
+use std::{net::UdpSocket, time::Duration};
 
 extern crate a2s_parse;
 
 fn main() -> () {
-    let remote_addr = SocketAddr::from(([208, 103, 169, 70], 27022));
+    let remote_addr = "208.103.169.70:27022";
 
     let info_request = a2s_parse::info::REQUEST_INFO;
 
