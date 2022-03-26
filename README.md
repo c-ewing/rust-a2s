@@ -1,3 +1,5 @@
+# Unfinished, Unpolished, will return someday
+
 # Goals:
 - Fully support Source and GoldSource packets
 - Support The Ship
